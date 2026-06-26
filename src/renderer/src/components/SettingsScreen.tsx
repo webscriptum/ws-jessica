@@ -56,110 +56,116 @@ export default function SettingsScreen(): JSX.Element {
   }
 
   const updaterColor =
-    updaterStatus === 'error' ? '#e05c5c'
-    : updaterStatus === 'ready' ? '#44B8AD'
-    : updaterStatus === 'not-available' ? '#888'
-    : '#888'
+    updaterStatus === 'error' ? 'var(--danger)'
+    : updaterStatus === 'ready' ? 'var(--accent)'
+    : 'var(--text-muted)'
+
+  const voiceLabels: Record<VoiceMode, { label: string; desc: string }> = {
+    'off':            { label: 'Disattivata',   desc: 'Nessun microfono' },
+    'voice-to-text':  { label: 'Trascrizione',  desc: 'Parla → testo' },
+    'conversation':   { label: 'Conversazione', desc: 'Chat vocale' },
+  }
 
   return (
     <div className="settings-screen">
-      <h2>Impostazioni</h2>
+      <div className="settings-inner">
 
-      <div className="settings-section">
-        <label className="settings-label">API Key Anthropic</label>
-        {hasApiKey && (
-          <p className="settings-hint">
-            Una chiave è già salvata. Inserisci una nuova per sostituirla.
-          </p>
-        )}
-        <input
-          type="password"
-          className="settings-input"
-          value={apiKey}
-          onChange={(e) => { setApiKey(e.target.value); setHasApiKey(false) }}
-          placeholder="sk-ant-api03-…"
-          autoComplete="off"
-        />
-        <p className="settings-hint" style={{ marginTop: 8 }}>
-          Usata per la chat con Jessica e la sintesi dei file cliente.
-        </p>
-      </div>
+        <h2 className="settings-page-title">Impostazioni</h2>
 
-      <div className="settings-section">
-        <label className="settings-label">API Key OpenAI</label>
-        {hasOpenAiKey && (
-          <p className="settings-hint">
-            Una chiave è già salvata. Inserisci una nuova per sostituirla.
-          </p>
-        )}
-        <input
-          type="password"
-          className="settings-input"
-          value={openAiKey}
-          onChange={(e) => { setOpenAiKey(e.target.value); setHasOpenAiKey(false) }}
-          placeholder="sk-…"
-          autoComplete="off"
-        />
-        <p className="settings-hint" style={{ marginTop: 8 }}>
-          Necessaria per generazione immagini (DALL-E 3), voce (TTS + Whisper).
-        </p>
-      </div>
+        {/* ── API Keys ── */}
+        <div className="settings-card">
+          <div className="settings-card-title">Chiavi API</div>
 
-      <div className="settings-section">
-        <label className="settings-label">Modalità voce</label>
-        <div className="voice-mode-options">
-          {(['off', 'voice-to-text', 'conversation'] as VoiceMode[]).map((mode) => (
-            <label key={mode} className={`voice-mode-option ${voiceMode === mode ? 'selected' : ''}`}>
-              <input
-                type="radio"
-                name="voiceMode"
-                value={mode}
-                checked={voiceMode === mode}
-                onChange={() => setVoiceMode(mode)}
-              />
-              <span className="voice-mode-label">
-                {mode === 'off' && 'Disattivata'}
-                {mode === 'voice-to-text' && 'Trascrizione'}
-                {mode === 'conversation' && 'Conversazione'}
-              </span>
-              <span className="voice-mode-desc">
-                {mode === 'off' && 'Nessun microfono'}
-                {mode === 'voice-to-text' && 'Parla → testo nel campo input'}
-                {mode === 'conversation' && 'Parla → risposta vocale di Jessica'}
-              </span>
-            </label>
-          ))}
+          <div className="settings-field">
+            <label className="settings-label">Anthropic</label>
+            {hasApiKey && (
+              <p className="settings-hint">Chiave salvata — inserisci una nuova per sostituirla.</p>
+            )}
+            <input
+              type="password"
+              className="settings-input"
+              value={apiKey}
+              onChange={(e) => { setApiKey(e.target.value); setHasApiKey(false) }}
+              placeholder="sk-ant-api03-…"
+              autoComplete="off"
+            />
+            <p className="settings-hint" style={{ marginTop: 6 }}>
+              Chat con Jessica e sintesi dei file cliente.
+            </p>
+          </div>
+
+          <div className="settings-field">
+            <label className="settings-label">OpenAI</label>
+            {hasOpenAiKey && (
+              <p className="settings-hint">Chiave salvata — inserisci una nuova per sostituirla.</p>
+            )}
+            <input
+              type="password"
+              className="settings-input"
+              value={openAiKey}
+              onChange={(e) => { setOpenAiKey(e.target.value); setHasOpenAiKey(false) }}
+              placeholder="sk-…"
+              autoComplete="off"
+            />
+            <p className="settings-hint" style={{ marginTop: 6 }}>
+              Generazione immagini (DALL-E 3) e voce (TTS + Whisper).
+            </p>
+          </div>
         </div>
-      </div>
 
-      <button className="btn-primary" onClick={handleSave}>
-        {saved ? '✓ Salvato' : 'Salva'}
-      </button>
+        {/* ── Voce ── */}
+        <div className="settings-card">
+          <div className="settings-card-title">Modalità voce</div>
+          <div className="voice-seg">
+            {(['off', 'voice-to-text', 'conversation'] as VoiceMode[]).map((mode) => (
+              <button
+                key={mode}
+                className={`voice-seg-btn ${voiceMode === mode ? 'active' : ''}`}
+                onClick={() => setVoiceMode(mode)}
+              >
+                <span className="voice-seg-label">{voiceLabels[mode].label}</span>
+                <span className="voice-seg-desc">{voiceLabels[mode].desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
-      <div className="settings-section settings-update-section">
-        <div className="settings-update-row">
-          <span className="settings-version">WS Jessica {version || '…'}</span>
-          {updaterStatus === 'ready' ? (
-            <button className="btn-update btn-update-install" onClick={handleInstall}>
-              Installa v{readyVersion} e riavvia
-            </button>
-          ) : (
-            <button
-              className="btn-update"
-              onClick={handleCheckUpdate}
-              disabled={updaterStatus === 'checking' || updaterStatus === 'downloading'}
-            >
-              {updaterStatus === 'checking' ? 'Controllo…'
-               : updaterStatus === 'downloading' ? 'Scaricamento…'
-               : 'Verifica aggiornamenti'}
-            </button>
+        {/* ── Save ── */}
+        <div className="settings-actions">
+          <button className="btn-primary" onClick={handleSave}>
+            Salva
+          </button>
+          {saved && <span className="settings-save-feedback">✓ Salvato</span>}
+        </div>
+
+        {/* ── Versione ── */}
+        <div className="settings-card">
+          <div className="settings-card-title">Versione</div>
+          <div className="settings-update-row">
+            <span className="settings-version">WS Jessica {version || '…'}</span>
+            {updaterStatus === 'ready' ? (
+              <button className="btn-update btn-update-install" onClick={handleInstall}>
+                Installa v{readyVersion} e riavvia
+              </button>
+            ) : (
+              <button
+                className="btn-update"
+                onClick={handleCheckUpdate}
+                disabled={updaterStatus === 'checking' || updaterStatus === 'downloading'}
+              >
+                {updaterStatus === 'checking' ? 'Controllo…'
+                 : updaterStatus === 'downloading' ? 'Scaricamento…'
+                 : 'Verifica aggiornamenti'}
+              </button>
+            )}
+          </div>
+          {updaterMessage && (
+            <p className="settings-update-msg" style={{ color: updaterColor }}>
+              {updaterMessage}
+            </p>
           )}
         </div>
-        {updaterMessage && (
-          <p className="settings-update-msg" style={{ color: updaterColor }}>
-            {updaterMessage}
-          </p>
-        )}
+
       </div>
     </div>
   )

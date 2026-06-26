@@ -685,19 +685,65 @@ body {
 /* ─── Settings ─── */
 
 .settings-screen {
-  padding: 40px;
-  max-width: 560px;
-  overflow-y: auto;
   height: 100%;
+  overflow-y: auto;
 }
 
-.settings-screen h2 {
-  font-size: 20px;
+.settings-screen::-webkit-scrollbar { width: 6px; }
+.settings-screen::-webkit-scrollbar-track { background: transparent; }
+.settings-screen::-webkit-scrollbar-thumb { background: rgba(68, 184, 173, 0.2); border-radius: 3px; }
+
+.settings-inner {
+  padding: 40px;
+  max-width: 580px;
+}
+
+.settings-page-title {
+  font-size: 22px;
   font-weight: 700;
-  margin-bottom: 32px;
+  letter-spacing: -0.3px;
+  margin-bottom: 28px;
+  background: var(--grad-accent);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.settings-section { margin-bottom: 28px; }
+.settings-card {
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+}
+
+.settings-card-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+
+.settings-field + .settings-field {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.settings-save-feedback {
+  font-size: 13px;
+  color: var(--success);
+  font-weight: 500;
+}
 
 .settings-label {
   display: block;
@@ -715,7 +761,7 @@ body {
 
 .settings-input {
   width: 100%;
-  background: var(--surface-2);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -723,50 +769,53 @@ body {
   font-family: inherit;
   padding: 9px 12px;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.settings-input:focus { border-color: var(--accent); }
+.settings-input:focus { border-color: var(--accent); box-shadow: var(--teal-glow); }
 .settings-input::placeholder { color: var(--text-muted); font-size: 12px; }
 
-/* ─── Voice mode options ─── */
+/* ─── Voice segmented control ─── */
 
-.voice-mode-options {
-  display: flex;
-  flex-direction: column;
+.voice-seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin-top: 4px;
 }
 
-.voice-mode-option {
+.voice-seg-btn {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
+  gap: 4px;
+  padding: 12px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--surface-2);
+  background: var(--bg);
   cursor: pointer;
+  text-align: left;
   transition: border-color 0.15s, background 0.15s;
 }
 
-.voice-mode-option input[type="radio"] {
-  display: none;
+.voice-seg-btn:hover {
+  border-color: rgba(68, 184, 173, 0.3);
+  background: rgba(68, 184, 173, 0.04);
 }
 
-.voice-mode-option.selected {
+.voice-seg-btn.active {
   border-color: var(--accent);
   background: var(--accent-dim);
 }
 
-.voice-mode-label {
+.voice-seg-label {
+  display: block;
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
 }
 
-.voice-mode-desc {
-  font-size: 12px;
+.voice-seg-desc {
+  display: block;
+  font-size: 11px;
   color: var(--text-muted);
 }
 
@@ -817,12 +866,6 @@ body {
 
 /* ─── Settings update section ─── */
 
-.settings-update-section {
-  margin-top: 36px;
-  padding-top: 24px;
-  border-top: 1px solid var(--border);
-}
-
 .settings-update-row {
   display: flex;
   align-items: center;
@@ -831,9 +874,9 @@ body {
 }
 
 .settings-version {
-  font-size: 13px;
-  color: var(--text-muted);
-  font-weight: 500;
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 600;
 }
 
 .btn-update {
