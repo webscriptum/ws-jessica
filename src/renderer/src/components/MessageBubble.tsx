@@ -5,6 +5,8 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   isStreaming?: boolean
+  imageBase64?: string
+  imageName?: string
 }
 
 interface Props {
@@ -15,15 +17,28 @@ export default function MessageBubble({ message }: Props): JSX.Element {
   return (
     <div className={`message-bubble ${message.role}`}>
       <div className="bubble-label">
-        {message.role === 'user' ? 'Tu' : 'Harmonic Noodle'}
+        {message.role === 'user' ? 'Tu' : 'Jessica'}
       </div>
       <div className="bubble-content">
-        {message.role === 'assistant' ? (
+        {message.imageBase64 ? (
+          <div className="bubble-image-wrapper">
+            <img
+              src={`data:image/png;base64,${message.imageBase64}`}
+              alt={message.imageName ?? 'Immagine generata'}
+              className="bubble-image"
+            />
+            {message.imageName && (
+              <p className="bubble-image-caption">{message.imageName}</p>
+            )}
+          </div>
+        ) : message.role === 'assistant' ? (
           <ReactMarkdown>{message.content}</ReactMarkdown>
         ) : (
           <p style={{ whiteSpace: 'pre-wrap' }}>{message.content}</p>
         )}
-        {message.isStreaming && <span className="cursor-blink">▊</span>}
+        {message.isStreaming && !message.imageBase64 && (
+          <span className="cursor-blink">▊</span>
+        )}
       </div>
     </div>
   )

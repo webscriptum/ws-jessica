@@ -1,3 +1,5 @@
+export type VoiceMode = 'off' | 'voice-to-text' | 'conversation'
+
 export interface Deliverable {
   filename: string
   path: string
@@ -51,10 +53,15 @@ export interface ElectronAPI {
   onDone: (cb: (r: { deliverables: Deliverable[] }) => void) => () => void
   onError: (cb: (e: string) => void) => () => void
   onDeliverable: (cb: (d: Deliverable) => void) => () => void
+  onImage: (cb: (img: { filename: string; base64: string }) => void) => () => void
 
   // Settings
-  getSettings: () => Promise<{ hasApiKey: boolean }>
-  saveSettings: (s: { apiKey?: string }) => Promise<{ ok: boolean }>
+  getSettings: () => Promise<{ hasApiKey: boolean; hasOpenAiKey: boolean; voiceMode: VoiceMode }>
+  saveSettings: (s: { apiKey?: string; openAiKey?: string; voiceMode?: VoiceMode }) => Promise<{ ok: boolean }>
+
+  // Voice
+  speakText: (text: string) => Promise<{ ok: boolean; base64?: string; error?: string }>
+  transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ ok: boolean; text?: string; error?: string }>
 }
 
 declare global {

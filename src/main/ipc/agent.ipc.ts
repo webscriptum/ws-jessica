@@ -1,8 +1,8 @@
-import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
+import { ipcMain, dialog, shell, app, BrowserWindow } from 'electron'
 import { basename, join } from 'path'
 import Anthropic from '@anthropic-ai/sdk'
 import { extractText } from '../agent/tools/read-source-file'
-import { loadApiKey } from '../storage/secure-storage'
+import { loadApiKey, loadOpenAiKey } from '../storage/secure-storage'
 import { Orchestrator } from '../agent/orchestrator'
 import {
   listConversations,
@@ -45,6 +45,7 @@ function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Orchestrato
   const apiKey = loadApiKey()
   if (!apiKey) return null
   if (!orchestrators.has(conv.id)) {
+    const openAiKey = loadOpenAiKey()
     const onFolderPicked = async (folder: string): Promise<void> => {
       const fresh = await getConversation(conv.id)
       if (fresh) {
@@ -55,7 +56,16 @@ function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Orchestrato
     }
     orchestrators.set(
       conv.id,
-      new Orchestrator(apiKey, conv.title, conv.sourceFiles, conv.contextSummary, conv.outputFolder, onFolderPicked, win)
+      new Orchestrator(
+        apiKey,
+        openAiKey,
+        conv.title,
+        conv.sourceFiles,
+        conv.contextSummary,
+        conv.outputFolder,
+        onFolderPicked,
+        win
+      )
     )
   }
   return orchestrators.get(conv.id)!
@@ -125,7 +135,6 @@ export function registerAgentIpc(win: BrowserWindow): void {
       const conv = await getConversation(convId)
       if (!conv) return { ok: false, error: 'Conversazione non trovata.' }
 
-      // Read files with size limits
       let totalChars = 0
       const fileSections: string[] = []
       for (const filePath of filePaths) {
@@ -147,15 +156,13 @@ export function registerAgentIpc(win: BrowserWindow): void {
         }
       }
 
-      const userContent = `${fileSections.join('\n\n---\n\n')}`
-
       try {
         const client = new Anthropic({ apiKey })
         const response = await client.messages.create({
           model: 'claude-opus-4-8',
           max_tokens: 4096,
           system: SYNTHESIS_PROMPT,
-          messages: [{ role: 'user', content: userContent }]
+          messages: [{ role: 'user', content: fileSections.join('\n\n---\n\n') }]
         })
 
         const summary =
@@ -164,7 +171,6 @@ export function registerAgentIpc(win: BrowserWindow): void {
             .map((b) => b.text)
             .join('') || null
 
-        // Save sourceFiles + contextSummary; reset orchestrator so it picks up new context
         conv.sourceFiles = filePaths
         conv.contextSummary = summary
         if (conv.title === 'Nuova chat' && filePaths.length > 0) {
@@ -173,7 +179,7 @@ export function registerAgentIpc(win: BrowserWindow): void {
         conv.updatedAt = new Date().toISOString()
         await saveConversation(conv)
 
-        orchestrators.delete(convId) // force recreation with new context
+        orchestrators.delete(convId)
 
         return { ok: true, summary: summary ?? undefined }
       } catch (e) {

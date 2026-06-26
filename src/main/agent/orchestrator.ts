@@ -7,6 +7,7 @@ import { writeDeliverable } from './tools/write-deliverable'
 import { writeWord } from './tools/write-word'
 import { writePdf } from './tools/write-pdf'
 import { writePresentation } from './tools/write-presentation'
+import { generateImage } from './tools/generate-image'
 import { detectSpecialty, SPECIALIST_PROMPTS } from './specialists'
 import type { DeliverableWritten } from '../../shared/types'
 
@@ -27,6 +28,7 @@ Formati di output disponibili — chiedi sempre all'utente quale preferisce se n
 - write_word → documento Word .docx (documenti professionali per il team o il cliente)
 - write_pdf → PDF impaginato .pdf (brand book, style guide, documenti graficamente curati)
 - write_presentation → presentazione PowerPoint .pptx (pitch deck, brand presentation, slide da mostrare al cliente)
+- generate_image → immagine PNG generata da AI (DALL-E 3) — per moodboard, concept visivi, ispirazioni grafiche
 
 Approccio:
 - Se una richiesta è ambigua, fai al massimo due domande di chiarimento prima di procedere
@@ -93,6 +95,18 @@ const TOOLS: Anthropic.Tool[] = [
       },
       required: ['filename', 'content']
     }
+  },
+  {
+    name: 'generate_image',
+    description: 'Genera un\'immagine PNG con DALL-E 3 e la salva nella cartella output. Usala per moodboard, concept visivi, ispirazioni grafiche, stili fotografici, palette colori visive.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        filename: { type: 'string', description: 'Nome file senza estensione (es. "moodboard-brand")' },
+        prompt: { type: 'string', description: 'Prompt dettagliato in inglese per DALL-E 3. Più è specifico, migliore è il risultato.' }
+      },
+      required: ['filename', 'prompt']
+    }
   }
 ]
 
@@ -105,6 +119,7 @@ export class Orchestrator {
 
   constructor(
     private apiKey: string,
+    private openAiKey: string | null,
     private convTitle: string,
     private sourceFiles: string[],
     contextSummary: string | null,
@@ -127,7 +142,6 @@ export class Orchestrator {
         buttonLabel: 'Scegli cartella'
       })
       if (result.canceled || !result.filePaths[0]) {
-        // fallback: Documents/Webscriptum Deliverables/<title>
         const safeName = this.convTitle.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 60) || 'Conversazione'
         this.outputFolder = join(app.getPath('documents'), 'Webscriptum Deliverables', safeName)
       } else {
@@ -151,13 +165,16 @@ export class Orchestrator {
       ? `${this.systemPrompt}\n\n---\n\n${specialistSection}`
       : this.systemPrompt
 
+    // Only include generate_image tool if OpenAI key is configured
+    const activeTools = this.openAiKey ? TOOLS : TOOLS.filter((t) => t.name !== 'generate_image')
+
     while (!this.cancelled) {
       const stream = this.client.messages.stream({
         model: MODEL,
         max_tokens: 8192,
         system: activeSystem,
         messages: this.conversation,
-        tools: TOOLS
+        tools: activeTools
       })
 
       stream.on('text', (text) => {
@@ -206,6 +223,21 @@ export class Orchestrator {
               this.mainWindow.webContents.send('agent:deliverable', written)
             } catch (e) {
               result = `Errore nel salvataggio: ${e instanceof Error ? e.message : String(e)}`
+            }
+          } else if (toolUse.name === 'generate_image') {
+            if (!this.openAiKey) {
+              result = 'Generazione immagini non disponibile: configura la OpenAI API key nelle Impostazioni.'
+            } else {
+              try {
+                const outputDir = await this.resolveOutputDir()
+                const img = await generateImage(outputDir, input.filename, input.prompt, this.openAiKey)
+                deliverables.push({ filename: img.filename, path: img.path })
+                result = `Immagine generata e salvata in: ${img.path}`
+                this.mainWindow.webContents.send('agent:deliverable', { filename: img.filename, path: img.path })
+                this.mainWindow.webContents.send('agent:image', { filename: img.filename, base64: img.base64 })
+              } catch (e) {
+                result = `Errore generazione immagine: ${e instanceof Error ? e.message : String(e)}`
+              }
             }
           } else {
             result = `Tool "${toolUse.name}" non riconosciuto.`

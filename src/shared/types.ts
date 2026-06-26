@@ -1,18 +1,22 @@
+export type VoiceMode = 'off' | 'voice-to-text' | 'conversation'
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: string
   isStreaming?: boolean
+  imageBase64?: string
+  imageName?: string
 }
 
 export interface Conversation {
   id: string
   title: string
-  sourceFiles: string[]          // absolute paths picked by the user
-  contextSummary: string | null  // synthesized context created from sourceFiles
-  outputFolder: string | null    // folder chosen by the user for saving deliverables
-  messages: Omit<Message, 'isStreaming'>[]
+  sourceFiles: string[]
+  contextSummary: string | null
+  outputFolder: string | null
+  messages: Omit<Message, 'isStreaming' | 'imageBase64' | 'imageName'>[]
   createdAt: string
   updatedAt: string
 }

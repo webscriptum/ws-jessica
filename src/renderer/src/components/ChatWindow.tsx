@@ -1,12 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import MessageBubble from './MessageBubble'
 import ContextBar from './ContextBar'
+import VoiceButton from './VoiceButton'
+import type { VoiceMode } from '../../../preload/index.d'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   isStreaming?: boolean
+  imageBase64?: string
+  imageName?: string
 }
 
 interface Props {
@@ -27,26 +31,25 @@ export default function ChatWindow({
   const [deliverables, setDeliverables] = useState<{ filename: string; path: string }[]>([])
   const [sourceFiles, setSourceFiles] = useState<string[]>([])
   const [hasContext, setHasContext] = useState(false)
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('off')
   const bottomRef = useRef<HTMLDivElement>(null)
   const streamingIdRef = useRef<string | null>(null)
+  const streamingTextRef = useRef<string>('')
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null)
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
 
-  // Load conversation state from disk on mount
   useEffect(() => {
     window.electronAPI.getConversation(conversationId).then((conv) => {
       if (!conv) return
-      setMessages(
-        conv.messages.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content
-        }))
-      )
+      setMessages(conv.messages.map((m) => ({ id: m.id, role: m.role, content: m.content })))
       setSourceFiles(conv.sourceFiles ?? [])
       setHasContext(!!conv.contextSummary)
+    })
+    window.electronAPI.getSettings().then((s) => {
+      setVoiceMode(s.voiceMode)
     })
   }, [conversationId])
 
@@ -54,9 +57,29 @@ export default function ChatWindow({
     scrollToBottom()
   }, [messages, scrollToBottom])
 
-  // IPC event listeners
+  const playTts = useCallback(async (text: string): Promise<void> => {
+    if (!text.trim()) return
+    currentAudioRef.current?.pause()
+    try {
+      const result = await window.electronAPI.speakText(text)
+      if (result.ok && result.base64) {
+        const audio = new Audio(`data:audio/mpeg;base64,${result.base64}`)
+        currentAudioRef.current = audio
+        await audio.play()
+      }
+    } catch (e) {
+      console.error('TTS error:', e)
+    }
+  }, [])
+
+  const stopTts = useCallback((): void => {
+    currentAudioRef.current?.pause()
+    currentAudioRef.current = null
+  }, [])
+
   useEffect(() => {
     const offToken = window.electronAPI.onToken((token) => {
+      streamingTextRef.current += token
       setMessages((prev) => {
         if (!streamingIdRef.current) {
           const id = uid()
@@ -75,12 +98,19 @@ export default function ChatWindow({
           m.id === streamingIdRef.current ? { ...m, isStreaming: false } : m
         )
       )
+      const text = streamingTextRef.current
+      streamingTextRef.current = ''
       streamingIdRef.current = null
       setIsRunning(false)
       onConversationUpdate()
+
+      if (voiceMode === 'conversation' && text) {
+        playTts(text).catch(console.error)
+      }
     })
 
     const offError = window.electronAPI.onError((error) => {
+      streamingTextRef.current = ''
       streamingIdRef.current = null
       setIsRunning(false)
       setMessages((prev) => [
@@ -93,29 +123,47 @@ export default function ChatWindow({
       setDeliverables((prev) => [...prev, d])
     })
 
+    const offImage = window.electronAPI.onImage((img) => {
+      setMessages((prev) => [
+        ...prev,
+        { id: uid(), role: 'assistant', content: '', imageBase64: img.base64, imageName: img.filename }
+      ])
+    })
+
     return () => {
       offToken()
       offDone()
       offError()
       offDeliverable()
+      offImage()
     }
-  }, [onConversationUpdate])
+  }, [onConversationUpdate, voiceMode, playTts])
 
-  const handleSend = (): void => {
-    const text = input.trim()
-    if (!text || isRunning) return
-
+  const sendText = useCallback((text: string): void => {
+    if (!text.trim() || isRunning) return
+    stopTts()
     setInput('')
     setIsRunning(true)
     streamingIdRef.current = null
+    streamingTextRef.current = ''
     setMessages((prev) => [...prev, { id: uid(), role: 'user', content: text }])
     window.electronAPI.sendMessage(conversationId, text)
-  }
+  }, [conversationId, isRunning, stopTts])
+
+  const handleSend = (): void => sendText(input)
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
+    }
+  }
+
+  const handleTranscript = (text: string): void => {
+    if (voiceMode === 'conversation') {
+      sendText(text)
+    } else {
+      setInput((prev) => (prev ? `${prev} ${text}` : text))
     }
   }
 
@@ -169,22 +217,42 @@ export default function ChatWindow({
         <div ref={bottomRef} />
       </div>
 
+      {voiceMode === 'conversation' && (
+        <div className="conversation-mode-bar">
+          <span className="conversation-mode-dot" />
+          Modalità conversazione attiva
+        </div>
+      )}
+
       <div className="input-area">
         <textarea
           className="message-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Scrivi un messaggio… (Invio per inviare, Shift+Invio per andare a capo)"
+          placeholder={
+            voiceMode === 'conversation'
+              ? 'Modalità vocale attiva — scrivi o usa il microfono'
+              : 'Scrivi un messaggio… (Invio per inviare, Shift+Invio per andare a capo)'
+          }
           disabled={isRunning}
           rows={3}
           autoFocus
         />
         <div className="input-actions">
+          {voiceMode !== 'off' && (
+            <VoiceButton
+              onTranscript={handleTranscript}
+              disabled={isRunning}
+            />
+          )}
           {isRunning ? (
             <button
               className="btn-cancel"
-              onClick={() => window.electronAPI.cancelAgent(conversationId)}
+              onClick={() => {
+                stopTts()
+                window.electronAPI.cancelAgent(conversationId)
+              }}
             >
               Interrompi
             </button>

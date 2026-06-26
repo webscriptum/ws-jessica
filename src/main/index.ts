@@ -1,8 +1,9 @@
-import { app, BrowserWindow, shell, dialog } from 'electron'
+import { app, BrowserWindow, shell, dialog, session } from 'electron'
 import { join } from 'path'
 import { autoUpdater } from 'electron-updater'
 import { registerAgentIpc } from './ipc/agent.ipc'
 import { registerSettingsIpc } from './ipc/settings.ipc'
+import { registerVoiceIpc } from './ipc/voice.ipc'
 
 autoUpdater.autoDownload = true
 autoUpdater.autoInstallOnAppQuit = true
@@ -33,6 +34,15 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Allow microphone access for voice recording
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    if (permission === 'media') {
+      callback(true)
+    } else {
+      callback(false)
+    }
+  })
+
   if (process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
@@ -41,7 +51,7 @@ function createWindow(): void {
 }
 
 function setupAutoUpdater(): void {
-  if (!app.isPackaged) return // only check in production builds
+  if (!app.isPackaged) return
 
   autoUpdater.on('update-downloaded', () => {
     dialog
@@ -49,7 +59,7 @@ function setupAutoUpdater(): void {
         type: 'info',
         title: 'Aggiornamento disponibile',
         message: 'È disponibile una nuova versione di WS Jessica.',
-        detail: 'Riavvia l\'app per installare l\'aggiornamento.',
+        detail: "Riavvia l'app per installare l'aggiornamento.",
         buttons: ['Riavvia ora', 'Più tardi'],
         defaultId: 0
       })
@@ -62,7 +72,6 @@ function setupAutoUpdater(): void {
     console.error('Auto-update error:', err.message)
   })
 
-  // Check silently — no dialog if already up to date
   autoUpdater.checkForUpdates().catch(() => undefined)
 }
 
@@ -72,6 +81,7 @@ app.whenReady().then(() => {
   const win = mainWindow!
   registerSettingsIpc(win)
   registerAgentIpc(win)
+  registerVoiceIpc()
   setupAutoUpdater()
 
   app.on('activate', () => {

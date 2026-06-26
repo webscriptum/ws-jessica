@@ -636,3 +636,149 @@ body {
 
 .settings-input:focus { border-color: var(--accent); }
 .settings-input::placeholder { color: var(--text-muted); font-size: 12px; }
+
+/* ─── Voice mode options ─── */
+
+.voice-mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.voice-mode-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.voice-mode-option input[type="radio"] {
+  display: none;
+}
+
+.voice-mode-option.selected {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.voice-mode-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.voice-mode-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ─── Voice button ─── */
+
+.btn-voice {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.btn-voice:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.btn-voice.recording {
+  background: rgba(224, 85, 85, 0.15);
+  border-color: var(--danger);
+  color: var(--danger);
+  animation: pulse-rec 1.2s ease-in-out infinite;
+}
+
+.btn-voice:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.voice-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes pulse-rec {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 85, 85, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(224, 85, 85, 0); }
+}
+
+/* ─── Conversation mode bar ─── */
+
+.conversation-mode-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 16px;
+  background: var(--accent-dim);
+  border-top: 1px solid rgba(68, 184, 173, 0.2);
+  font-size: 12px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.conversation-mode-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-rec 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+/* ─── Input actions (voice + send) ─── */
+
+.input-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ─── Inline images ─── */
+
+.bubble-image-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bubble-image {
+  max-width: 100%;
+  width: 400px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  display: block;
+}
+
+.bubble-image-caption {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+}

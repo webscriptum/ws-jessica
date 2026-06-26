@@ -40,8 +40,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('agent:deliverable', handler)
     return () => ipcRenderer.removeListener('agent:deliverable', handler)
   },
+  onImage: (cb: (img: { filename: string; base64: string }) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, img: unknown): void =>
+      cb(img as { filename: string; base64: string })
+    ipcRenderer.on('agent:image', handler)
+    return () => ipcRenderer.removeListener('agent:image', handler)
+  },
 
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
-  saveSettings: (s: { apiKey?: string }) => ipcRenderer.invoke('settings:save', s)
+  saveSettings: (s: { apiKey?: string; openAiKey?: string; voiceMode?: string }) =>
+    ipcRenderer.invoke('settings:save', s),
+
+  // Voice: TTS
+  speakText: (text: string) => ipcRenderer.invoke('tts:speak', text),
+
+  // Voice: STT
+  transcribeAudio: (audioBuffer: ArrayBuffer) => ipcRenderer.invoke('stt:transcribe', audioBuffer)
 })
