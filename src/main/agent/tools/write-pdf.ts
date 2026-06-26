@@ -450,12 +450,16 @@ export async function writePdf(
 
   try {
     await win.loadFile(tmpHtml)
-    await win.webContents.executeJavaScript('document.fonts.ready')
-    const pdfBuffer = await win.webContents.printToPDF({
-      printBackground: true,
-      pageSize: 'A4',
-      margins: { marginType: 'none' }
-    })
+    // Wait for fonts but cap at 5s to avoid hanging on missing CDN fonts
+    await win.webContents.executeJavaScript(
+      'Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 5000))])'
+    )
+    const pdfBuffer = await Promise.race([
+      win.webContents.printToPDF({ printBackground: true, pageSize: 'A4', margins: { marginType: 'none' } }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('PDF generation timed out after 60s')), 60_000)
+      )
+    ])
     await writeFile(filePath, pdfBuffer)
   } finally {
     win.destroy()
