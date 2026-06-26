@@ -25,19 +25,31 @@ Regole operative:
 - Quando hai bisogno di ricontrollare un dettaglio specifico dai materiali originali, usa read_source_file
 - Quando produci un deliverable completo, scegli il formato più adatto e salva con il tool corretto
 
-Formati di output disponibili — chiedi sempre all'utente quale preferisce se non è ovvio:
-- write_deliverable → file .md (note interne, bozze, working documents)
-- write_word → documento Word .docx (documenti professionali per il team o il cliente)
-- write_pdf → PDF impaginato .pdf con grafica su misura (brochure, catalogo, company profile, brand book)
-- write_presentation → presentazione PowerPoint .pptx (pitch deck, brand presentation, slide da mostrare al cliente)
-- generate_image → immagine PNG generata da AI (DALL-E 3) — per moodboard, concept visivi, ispirazioni grafiche
+SCELTA DEL FORMATO — prima di produrre qualsiasi deliverable, scelgo il formato che il destinatario può usare SUBITO senza conversioni:
 
-Design adattivo per documenti grafici (brochure, catalogo, company profile, presentazione-PDF):
-- Prima di progettare, estraggo sempre dall'identità visiva del CONTESTO CLIENTE: colori primari, stile grafico (industriale, luxury, minimal, creativo, corporate), eventuali reference
-- Progetto un layout HTML originale che rispecchia quel cliente — non uso mai un template generico
-- Il layout deve comunicare il posizionamento: es. industriale → geometrie bold, contrasti netti; luxury → spazio bianco, serif, oro; startup → colori vivaci, asimmetria; corporate → griglia rigorosa, blu/grigio
+  Digitale/web:
+    mockup homepage, landing page, template email, UI, prototipo → write_html (.html, apribile nel browser)
+
+  Stampa e branded:
+    brochure, catalogo, company profile, brand book → write_pdf
+    pitch deck, presentazione da proiettare → write_presentation (.pptx)
+    documento da firmare, manuale, lettera formale → write_word (.docx)
+
+  Dati e testo:
+    script, trascrizione, testo plain → write_deliverable (.txt)
+    dati tabulari, budget, schedule → write_deliverable (.csv)
+    dati strutturati, config, API mock → write_deliverable (.json)
+    note di lavoro, brief interni → write_deliverable (.md)
+
+  Visuale:
+    moodboard, concept visivo, render AI → generate_image (.png)
+
+REGOLA ASSOLUTA: non scrivo mai HTML dentro un PDF. Non uso mai una presentazione quando serve un documento. Il formato sbagliato annulla il lavoro.
+
+Design adattivo per documenti grafici (PDF, HTML, PPTX):
+- Estraggo sempre dall'identità visiva del CONTESTO CLIENTE: colori, stile, reference
+- Progetto un layout originale che rispecchia quel cliente — non uso mai un template generico
 - Se i colori del cliente non sono nel contesto, li chiedo prima di procedere
-- Per report, note interne e documenti testuali uso invece la modalità markdown
 
 Approccio generale:
 - Se una richiesta è ambigua, fai al massimo due domande di chiarimento prima di procedere
@@ -59,12 +71,18 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'write_deliverable',
-    description: 'Salva un deliverable come file Markdown (.md). Usalo per note interne, bozze e working documents.',
+    description: `Salva un file di testo semplice. Scegli l'estensione in base al contenuto:
+.md  → note interne, brief, documenti di lavoro in markdown
+.txt → script, trascrizioni, testi plain
+.csv → dati tabulari, budget, schedule (valori separati da virgola)
+.json → dati strutturati, configurazioni, API mock
+.xml / .svg / altro → se il contenuto lo richiede
+NON usare per HTML (→ write_html), PDF (→ write_pdf), Word (→ write_word), PPTX (→ write_presentation)`,
     input_schema: {
       type: 'object' as const,
       properties: {
-        filename: { type: 'string', description: 'Nome file con estensione .md' },
-        content: { type: 'string', description: 'Contenuto markdown completo' }
+        filename: { type: 'string', description: 'Nome file con estensione appropriata (.md, .txt, .csv, .json, ecc.)' },
+        content: { type: 'string', description: 'Contenuto testuale completo' }
       },
       required: ['filename', 'content']
     }
@@ -126,6 +144,28 @@ Usa i colori del cliente dall'identità visiva nel contesto — non i colori Web
       properties: {
         filename: { type: 'string', description: 'Nome file con estensione .pptx' },
         content: { type: 'string', description: 'Slide in markdown: # titolo, ## sottotitolo, - bullet, --- separa le slide.' }
+      },
+      required: ['filename', 'content']
+    }
+  },
+  {
+    name: 'write_html',
+    description: `Salva un file HTML apribile direttamente nel browser (.html). Usa per:
+- Mockup di homepage, landing page, pagine web
+- Template email HTML
+- Interfacce UI, componenti web, prototipi interattivi
+- Qualsiasi output che deve essere visualizzato nel browser
+
+Genera HTML5 completo e self-contained:
+- Boilerplate: <!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+- CSS nel <style> — nessuna dipendenza esterna (o CDN se appropriato per icone/font)
+- Usa px/rem/% — NON pt (pt è per la stampa PDF)
+- Per mockup: cura la grafica, usa i colori del cliente, aggiungi placeholder realistici per immagini e testi`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        filename: { type: 'string', description: 'Nome file con estensione .html' },
+        content: { type: 'string', description: 'HTML5 completo e valido' }
       },
       required: ['filename', 'content']
     }
@@ -261,6 +301,7 @@ export class Orchestrator {
             result = await readSourceFile(this.sourceFiles, input.filename)
           } else if (
             toolUse.name === 'write_deliverable' ||
+            toolUse.name === 'write_html' ||
             toolUse.name === 'write_word' ||
             toolUse.name === 'write_pdf' ||
             toolUse.name === 'write_presentation'
