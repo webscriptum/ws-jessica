@@ -1,5 +1,5 @@
 import { ipcMain, dialog, shell, app, BrowserWindow } from 'electron'
-import { readFile } from 'fs/promises'
+import { readFile, readdir, stat } from 'fs/promises'
 import { basename, extname, join } from 'path'
 import Anthropic, { RateLimitError } from '@anthropic-ai/sdk'
 import { extractText } from '../agent/tools/read-source-file'
@@ -383,6 +383,47 @@ export function registerAgentIpc(win: BrowserWindow): void {
       const dir = join(app.getPath('documents'), 'Webscriptum Deliverables')
       await shell.openPath(dir)
       return { ok: true }
+    }
+  )
+
+  ipcMain.handle('files:openFolder', async (_e, folder: string): Promise<{ ok: boolean }> => {
+    const err = await shell.openPath(folder)
+    return { ok: !err }
+  })
+
+  ipcMain.handle('files:openFile', async (_e, filePath: string): Promise<{ ok: boolean }> => {
+    const err = await shell.openPath(filePath)
+    return { ok: !err }
+  })
+
+  ipcMain.handle(
+    'files:listOutputFiles',
+    async (_e, folder: string): Promise<{ filename: string; path: string; date: string }[]> => {
+      const results: { filename: string; path: string; mtime: number; date: string }[] = []
+      try {
+        const entries = await readdir(folder, { withFileTypes: true })
+        for (const entry of entries) {
+          const entryPath = join(folder, entry.name)
+          if (entry.isDirectory()) {
+            // one level of date subdirs (e.g. 2026-06-26/)
+            try {
+              const sub = await readdir(entryPath, { withFileTypes: true })
+              for (const file of sub) {
+                if (file.isFile() && !file.name.startsWith('.')) {
+                  const fp = join(entryPath, file.name)
+                  const s = await stat(fp)
+                  results.push({ filename: file.name, path: fp, mtime: s.mtimeMs, date: entry.name })
+                }
+              }
+            } catch { /* skip unreadable subdir */ }
+          } else if (entry.isFile() && !entry.name.startsWith('.')) {
+            const s = await stat(entryPath)
+            results.push({ filename: entry.name, path: entryPath, mtime: s.mtimeMs, date: '' })
+          }
+        }
+      } catch { /* folder not yet created */ }
+      results.sort((a, b) => b.mtime - a.mtime)
+      return results.slice(0, 30).map(({ filename, path, date }) => ({ filename, path, date }))
     }
   )
 

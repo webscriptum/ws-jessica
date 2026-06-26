@@ -44,6 +44,9 @@ export interface ElectronAPI {
   pickOutputFolder: (convId: string) => Promise<{ ok: boolean; folder?: string }>
   setOutputFolder: (convId: string, folder: string) => Promise<{ ok: boolean }>
   openDeliverables: () => Promise<{ ok: boolean }>
+  openFolder: (folder: string) => Promise<{ ok: boolean }>
+  openFile: (filePath: string) => Promise<{ ok: boolean }>
+  listOutputFiles: (folder: string) => Promise<{ filename: string; path: string; date: string }[]>
 
   // Agent
   sendMessage: (convId: string, msg: string, voiceMode?: string) => Promise<{

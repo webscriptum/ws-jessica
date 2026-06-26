@@ -1,4 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+
+interface DiskFile {
+  filename: string
+  path: string
+  date: string
+}
 
 interface Props {
   convId: string
@@ -34,6 +40,18 @@ function shortFolder(p: string | null): string {
   return last2.length > 0 ? '…/' + last2 : p
 }
 
+function fileIcon(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+  if (['pdf'].includes(ext)) return '📕'
+  if (['docx', 'doc'].includes(ext)) return '📘'
+  if (['pptx', 'ppt'].includes(ext)) return '📊'
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) return '🖼️'
+  if (['html', 'htm'].includes(ext)) return '🌐'
+  if (['csv', 'xlsx'].includes(ext)) return '📋'
+  if (['json'].includes(ext)) return '⚙️'
+  return '📄'
+}
+
 export default function AssetPanel({
   convId,
   sourceFiles,
@@ -47,6 +65,18 @@ export default function AssetPanel({
   const [showUrlInput, setShowUrlInput] = useState(false)
   const [urlInputValue, setUrlInputValue] = useState('')
   const [isSynthesizing, setIsSynthesizing] = useState(false)
+  const [diskFiles, setDiskFiles] = useState<DiskFile[]>([])
+
+  const refreshDiskFiles = useCallback(async () => {
+    if (!outputFolder) return
+    const files = await window.electronAPI.listOutputFiles(outputFolder)
+    setDiskFiles(files)
+  }, [outputFolder])
+
+  // Refresh when folder changes or a new deliverable is produced
+  useEffect(() => {
+    refreshDiskFiles()
+  }, [outputFolder, deliverables.length, refreshDiskFiles])
 
   const handleAddFiles = async (): Promise<void> => {
     setIsSynthesizing(true)
@@ -96,7 +126,23 @@ export default function AssetPanel({
     }
   }
 
+  const handleOpenFolder = (): void => {
+    if (outputFolder) window.electronAPI.openFolder(outputFolder)
+  }
+
+  const handleOpenFile = (path: string): void => {
+    window.electronAPI.openFile(path)
+  }
+
   const hasContext = sourceFiles.length > 0 || sourceUrls.length > 0
+
+  // Group disk files by date for display
+  const filesByDate = diskFiles.reduce<Record<string, DiskFile[]>>((acc, f) => {
+    const key = f.date || 'Altro'
+    if (!acc[key]) acc[key] = []
+    acc[key].push(f)
+    return acc
+  }, {})
 
   return (
     <div className="asset-panel">
@@ -172,10 +218,10 @@ export default function AssetPanel({
                 if (e.key === 'Escape') { setShowUrlInput(false); setUrlInputValue('') }
               }}
               autoFocus
-              disabled={urlLoading}
+              disabled={isSynthesizing}
             />
-            <button className="asset-url-confirm" onClick={handleAddUrl} disabled={urlLoading}>
-              {urlLoading ? '…' : '↵'}
+            <button className="asset-url-confirm" onClick={handleAddUrl} disabled={isSynthesizing}>
+              {isSynthesizing ? '…' : '↵'}
             </button>
           </div>
         )}
@@ -200,34 +246,43 @@ export default function AssetPanel({
       <div className="asset-section">
         <div className="asset-section-title">Output</div>
         <div className="asset-output-row">
-          <span className="asset-output-path" title={outputFolder ?? ''}>
+          <button
+            className="asset-output-path"
+            title={outputFolder ? `Apri: ${outputFolder}` : ''}
+            onClick={handleOpenFolder}
+            disabled={!outputFolder}
+          >
             {shortFolder(outputFolder)}
-          </span>
+          </button>
           <button className="asset-edit-btn" onClick={handlePickFolder} title="Cambia cartella">
             ✎
           </button>
         </div>
-      </div>
 
-      {/* ── File generati ── */}
-      {deliverables.length > 0 && (
-        <div className="asset-section">
-          <div className="asset-section-title">File generati</div>
-          <div className="asset-chips">
-            {deliverables.map((d, i) => (
-              <div
-                key={i}
-                className="asset-chip asset-chip-deliverable"
-                title={d.path}
-                onClick={() => window.electronAPI.openDeliverables()}
-              >
-                <span className="asset-chip-icon">📎</span>
-                <span className="asset-chip-name">{d.filename}</span>
-              </div>
-            ))}
+        {/* File su disco raggruppati per data */}
+        {diskFiles.length > 0 && (
+          <div className="asset-disk-files">
+            {Object.entries(filesByDate)
+              .sort(([a], [b]) => b.localeCompare(a))
+              .map(([date, files]) => (
+                <div key={date} className="asset-disk-group">
+                  <div className="asset-disk-date">{date}</div>
+                  {files.map((f) => (
+                    <button
+                      key={f.path}
+                      className="asset-disk-file"
+                      title={f.path}
+                      onClick={() => handleOpenFile(f.path)}
+                    >
+                      <span className="asset-chip-icon">{fileIcon(f.filename)}</span>
+                      <span className="asset-disk-file-name">{f.filename}</span>
+                    </button>
+                  ))}
+                </div>
+              ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

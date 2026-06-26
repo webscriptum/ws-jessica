@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pickOutputFolder: (convId: string) => ipcRenderer.invoke('files:pickOutputFolder', convId),
   setOutputFolder: (convId: string, folder: string) => ipcRenderer.invoke('files:setOutputFolder', convId, folder),
   openDeliverables: () => ipcRenderer.invoke('files:open-deliverables'),
+  openFolder: (folder: string) => ipcRenderer.invoke('files:openFolder', folder),
+  openFile: (filePath: string) => ipcRenderer.invoke('files:openFile', filePath),
+  listOutputFiles: (folder: string) => ipcRenderer.invoke('files:listOutputFiles', folder),
 
   // Agent
   sendMessage: (convId: string, msg: string, voiceMode?: string) =>
