@@ -11,7 +11,8 @@ const config: Configuration = {
   publish: {
     provider: 'github',
     owner: 'webscriptum',
-    repo: 'ws-jessica'
+    repo: 'ws-jessica',
+    releaseType: 'release'
   },
   mac: {
     target: [{ target: 'dmg', arch: ['x64', 'arm64'] }],
