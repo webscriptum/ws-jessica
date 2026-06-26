@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import MessageBubble from './MessageBubble'
+import JessicaAvatar from './JessicaAvatar'
 import ContextBar from './ContextBar'
 import VoiceButton from './VoiceButton'
 import type { VoiceMode } from '../../../preload/index.d'
@@ -202,7 +203,10 @@ export default function ChatWindow({
       <div className="messages-list">
         {messages.length === 0 && (
           <div className="empty-state">
-            <div className="empty-icon">Jessica</div>
+            <div className="empty-avatar-ring">
+              <JessicaAvatar size={60} />
+            </div>
+            <div className="empty-icon">WS Jessica</div>
             <p>Ciao, sono Jessica. Come posso aiutarti?</p>
             <p>
               {hasContext

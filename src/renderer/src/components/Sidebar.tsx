@@ -1,4 +1,5 @@
 import type { ConversationSummary } from '../../../preload/index.d'
+import JessicaAvatar from './JessicaAvatar'
 
 interface Props {
   conversations: ConversationSummary[]
@@ -32,6 +33,7 @@ export default function Sidebar({
     <aside className="sidebar">
       <div className="sidebar-header">
         <div className="sidebar-brand">
+          <JessicaAvatar size={18} />
           <span className="sidebar-brand-ws">WS</span>
           <span className="sidebar-brand-name">Jessica</span>
         </div>
