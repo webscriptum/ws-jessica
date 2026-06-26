@@ -277,8 +277,33 @@ export class Orchestrator {
     }
   }
 
+  private sanitizeConversation(): void {
+    // If the last assistant message has tool_use blocks without following tool_results
+    // (happens after cancel or network error), add synthetic tool_results to avoid 400 errors
+    const last = this.conversation[this.conversation.length - 1]
+    if (!last || last.role !== 'assistant') return
+    const content = Array.isArray(last.content) ? last.content : []
+    const orphaned = content.filter(
+      (b): b is Anthropic.ToolUseBlock => typeof b === 'object' && 'type' in b && b.type === 'tool_use'
+    )
+    if (orphaned.length === 0) return
+    this.conversation.push({
+      role: 'user',
+      content: orphaned.map((t) => ({
+        type: 'tool_result' as const,
+        tool_use_id: t.id,
+        content: 'Operazione interrotta.'
+      }))
+    })
+  }
+
+  private sendStatus(text: string): void {
+    if (!this.cancelled) this.mainWindow.webContents.send('agent:token', text)
+  }
+
   async sendMessage(userMessage: string, voiceMode?: string): Promise<DeliverableWritten[]> {
     this.cancelled = false
+    this.sanitizeConversation()
     const deliverables: DeliverableWritten[] = []
 
     this.conversation.push({ role: 'user', content: userMessage })
@@ -307,10 +332,16 @@ export class Orchestrator {
 
         const toolResults: Anthropic.ToolResultBlockParam[] = []
         for (const toolUse of toolUseBlocks) {
+          if (this.cancelled) {
+            toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: 'Operazione annullata.' })
+            continue
+          }
+
           const input = toolUse.input as Record<string, string>
           let result: string
 
           if (toolUse.name === 'read_source_file') {
+            this.sendStatus(`\n\n*📖 Lettura: ${input.filename}…*`)
             result = await readSourceFile(this.sourceFiles, input.filename)
           } else if (
             toolUse.name === 'write_deliverable' ||
@@ -319,6 +350,8 @@ export class Orchestrator {
             toolUse.name === 'write_pdf' ||
             toolUse.name === 'write_presentation'
           ) {
+            const icon = toolUse.name === 'write_pdf' ? '📕' : toolUse.name === 'write_word' ? '📘' : toolUse.name === 'write_presentation' ? '📊' : '📄'
+            this.sendStatus(`\n\n*${icon} Scrittura: ${input.filename}…*`)
             try {
               const outputDir = await this.resolveOutputDir()
               let written: DeliverableWritten
@@ -338,6 +371,7 @@ export class Orchestrator {
               result = `Errore nel salvataggio: ${e instanceof Error ? e.message : String(e)}`
             }
           } else if (toolUse.name === 'generate_image') {
+            this.sendStatus(`\n\n*🎨 Generazione immagine: ${input.filename}…*`)
             const currentKey = loadOpenAiKey()
             if (!currentKey) {
               result = 'Generazione immagini non disponibile: configura la OpenAI API key nelle Impostazioni.'

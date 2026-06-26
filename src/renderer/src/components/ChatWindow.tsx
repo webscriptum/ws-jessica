@@ -38,6 +38,7 @@ export default function ChatWindow({
   const [hasContext, setHasContext] = useState(false)
   const [onboardingDone, setOnboardingDone] = useState(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('off')
+  const [pendingResponse, setPendingResponse] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const messagesListRef = useRef<HTMLDivElement>(null)
   const isUserScrolledUpRef = useRef(false)
@@ -105,6 +106,7 @@ export default function ChatWindow({
 
   useEffect(() => {
     const offToken = window.electronAPI.onToken((token) => {
+      if (!streamingIdRef.current) setPendingResponse(false)
       streamingTextRef.current += token
       const fullText = streamingTextRef.current
 
@@ -167,6 +169,7 @@ export default function ChatWindow({
       streamingTextRef.current = ''
       streamingIdRef.current = null
       setIsRunning(false)
+      setPendingResponse(false)
       setMessages((prev) => [
         ...prev,
         { id: uid(), role: 'assistant', content: `**Errore:** ${error}` }
@@ -198,6 +201,7 @@ export default function ChatWindow({
     stopTts()
     setInput('')
     setIsRunning(true)
+    setPendingResponse(true)
     isUserScrolledUpRef.current = false
     voiceSpokenRef.current = false
     streamingIdRef.current = null
@@ -283,6 +287,16 @@ export default function ChatWindow({
           {messages.map((m) => (
             <MessageBubble key={m.id} message={m} />
           ))}
+          {isRunning && pendingResponse && (
+            <div className="typing-indicator">
+              <div className="typing-avatar">
+                <JessicaAvatar size={22} />
+              </div>
+              <div className="typing-dots">
+                <span /><span /><span />
+              </div>
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
 
