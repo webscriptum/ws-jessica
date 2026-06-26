@@ -59,6 +59,12 @@ export interface ElectronAPI {
   getSettings: () => Promise<{ hasApiKey: boolean; hasOpenAiKey: boolean; voiceMode: VoiceMode }>
   saveSettings: (s: { apiKey?: string; openAiKey?: string; voiceMode?: VoiceMode }) => Promise<{ ok: boolean }>
 
+  // Version & updater
+  getVersion: () => Promise<string>
+  checkForUpdates: () => Promise<{ ok: boolean; message?: string }>
+  installUpdate: () => Promise<void>
+  onUpdaterStatus: (cb: (s: { status: string; message: string; version?: string }) => void) => () => void
+
   // Voice
   speakText: (text: string) => Promise<{ ok: boolean; base64?: string; error?: string }>
   transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ ok: boolean; text?: string; error?: string }>

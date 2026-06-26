@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import type { VoiceMode } from '../../../preload/index.d'
 
+type UpdaterStatus = 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' | 'error'
+
 export default function SettingsScreen(): JSX.Element {
   const [apiKey, setApiKey] = useState('')
   const [hasApiKey, setHasApiKey] = useState(false)
@@ -8,6 +10,10 @@ export default function SettingsScreen(): JSX.Element {
   const [hasOpenAiKey, setHasOpenAiKey] = useState(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('off')
   const [saved, setSaved] = useState(false)
+  const [version, setVersion] = useState('')
+  const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatus>('idle')
+  const [updaterMessage, setUpdaterMessage] = useState('')
+  const [readyVersion, setReadyVersion] = useState<string | undefined>()
 
   useEffect(() => {
     window.electronAPI.getSettings().then((s) => {
@@ -17,6 +23,14 @@ export default function SettingsScreen(): JSX.Element {
       setOpenAiKey(s.hasOpenAiKey ? '••••••••' : '')
       setVoiceMode(s.voiceMode)
     })
+    window.electronAPI.getVersion().then(setVersion)
+
+    const unsub = window.electronAPI.onUpdaterStatus(({ status, message, version: v }) => {
+      setUpdaterStatus(status as UpdaterStatus)
+      setUpdaterMessage(message)
+      if (v) setReadyVersion(v)
+    })
+    return unsub
   }, [])
 
   const handleSave = async (): Promise<void> => {
@@ -31,10 +45,21 @@ export default function SettingsScreen(): JSX.Element {
     setTimeout(() => setSaved(false), 2500)
   }
 
-  const canSave =
-    (apiKey && apiKey !== '••••••••') ||
-    (openAiKey && openAiKey !== '••••••••') ||
-    true // voiceMode always saveable
+  const handleCheckUpdate = async (): Promise<void> => {
+    setUpdaterStatus('checking')
+    setUpdaterMessage('Controllo aggiornamenti…')
+    await window.electronAPI.checkForUpdates()
+  }
+
+  const handleInstall = (): void => {
+    window.electronAPI.installUpdate()
+  }
+
+  const updaterColor =
+    updaterStatus === 'error' ? '#e05c5c'
+    : updaterStatus === 'ready' ? '#44B8AD'
+    : updaterStatus === 'not-available' ? '#888'
+    : '#888'
 
   return (
     <div className="settings-screen">
@@ -107,9 +132,35 @@ export default function SettingsScreen(): JSX.Element {
         </div>
       </div>
 
-      <button className="btn-primary" onClick={handleSave} disabled={!canSave}>
+      <button className="btn-primary" onClick={handleSave}>
         {saved ? '✓ Salvato' : 'Salva'}
       </button>
+
+      <div className="settings-section settings-update-section">
+        <div className="settings-update-row">
+          <span className="settings-version">WS Jessica {version || '…'}</span>
+          {updaterStatus === 'ready' ? (
+            <button className="btn-update btn-update-install" onClick={handleInstall}>
+              Installa v{readyVersion} e riavvia
+            </button>
+          ) : (
+            <button
+              className="btn-update"
+              onClick={handleCheckUpdate}
+              disabled={updaterStatus === 'checking' || updaterStatus === 'downloading'}
+            >
+              {updaterStatus === 'checking' ? 'Controllo…'
+               : updaterStatus === 'downloading' ? 'Scaricamento…'
+               : 'Verifica aggiornamenti'}
+            </button>
+          )}
+        </div>
+        {updaterMessage && (
+          <p className="settings-update-msg" style={{ color: updaterColor }}>
+            {updaterMessage}
+          </p>
+        )}
+      </div>
     </div>
   )
 }

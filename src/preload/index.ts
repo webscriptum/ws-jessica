@@ -52,6 +52,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveSettings: (s: { apiKey?: string; openAiKey?: string; voiceMode?: string }) =>
     ipcRenderer.invoke('settings:save', s),
 
+  // Version & updater
+  getVersion: () => ipcRenderer.invoke('app:version'),
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
+  onUpdaterStatus: (cb: (s: { status: string; message: string; version?: string }) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, s: unknown): void =>
+      cb(s as { status: string; message: string; version?: string })
+    ipcRenderer.on('updater:status', handler)
+    return () => ipcRenderer.removeListener('updater:status', handler)
+  },
+
   // Voice: TTS
   speakText: (text: string) => ipcRenderer.invoke('tts:speak', text),
 

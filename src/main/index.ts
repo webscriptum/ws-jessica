@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog, session } from 'electron'
+import { app, BrowserWindow, shell, dialog, session, ipcMain } from 'electron'
 import { join } from 'path'
 import { autoUpdater } from 'electron-updater'
 import { registerAgentIpc } from './ipc/agent.ipc'
@@ -34,7 +34,6 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  // Allow microphone access for voice recording
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     if (permission === 'media') {
       callback(true)
@@ -50,15 +49,39 @@ function createWindow(): void {
   }
 }
 
+type UpdaterStatus = 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' | 'error'
+
+function emitUpdaterStatus(status: UpdaterStatus, message: string, version?: string): void {
+  mainWindow?.webContents.send('updater:status', { status, message, version })
+}
+
 function setupAutoUpdater(): void {
   if (!app.isPackaged) return
 
-  autoUpdater.on('update-downloaded', () => {
+  autoUpdater.on('checking-for-update', () => {
+    emitUpdaterStatus('checking', 'Controllo aggiornamenti…')
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    emitUpdaterStatus('available', `Nuova versione ${info.version} trovata, scaricamento…`, info.version)
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    emitUpdaterStatus('not-available', 'Sei già alla versione più recente.')
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    const pct = Math.round(progress.percent)
+    emitUpdaterStatus('downloading', `Scaricamento aggiornamento… ${pct}%`)
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    emitUpdaterStatus('ready', `Versione ${info.version} pronta. Riavvia per installare.`, info.version)
     dialog
       .showMessageBox(mainWindow!, {
         type: 'info',
         title: 'Aggiornamento disponibile',
-        message: 'È disponibile una nuova versione di WS Jessica.',
+        message: `WS Jessica ${info.version} è pronta.`,
         detail: "Riavvia l'app per installare l'aggiornamento.",
         buttons: ['Riavvia ora', 'Più tardi'],
         defaultId: 0
@@ -69,10 +92,32 @@ function setupAutoUpdater(): void {
   })
 
   autoUpdater.on('error', (err) => {
-    console.error('Auto-update error:', err.message)
+    emitUpdaterStatus('error', `Errore aggiornamento: ${err.message}`)
   })
 
-  autoUpdater.checkForUpdates().catch(() => undefined)
+  autoUpdater.checkForUpdates().catch((err) => {
+    emitUpdaterStatus('error', `Errore controllo aggiornamenti: ${err.message}`)
+  })
+}
+
+function registerUpdaterIpc(): void {
+  ipcMain.handle('app:version', () => app.getVersion())
+
+  ipcMain.handle('updater:check', async () => {
+    if (!app.isPackaged) {
+      return { ok: false, message: 'Auto-update non disponibile in sviluppo.' }
+    }
+    try {
+      await autoUpdater.checkForUpdates()
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.handle('updater:install', () => {
+    autoUpdater.quitAndInstall()
+  })
 }
 
 app.whenReady().then(() => {
@@ -82,6 +127,7 @@ app.whenReady().then(() => {
   registerSettingsIpc(win)
   registerAgentIpc(win)
   registerVoiceIpc()
+  registerUpdaterIpc()
   setupAutoUpdater()
 
   app.on('activate', () => {
