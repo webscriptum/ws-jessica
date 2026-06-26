@@ -42,7 +42,8 @@ SCELTA DEL FORMATO — prima di produrre qualsiasi deliverable, scelgo il format
     note di lavoro, brief interni → write_deliverable (.md)
 
   Visuale:
-    moodboard, concept visivo, render AI → generate_image (.png)
+    moodboard, color palette, visual identity board → write_html (.html) — layout HTML con swatches CSS, campioni tipografia, sezioni mood
+    illustrazione AI, render fotorealistico singolo, icona → generate_image (.png)
 
 REGOLA ASSOLUTA: non scrivo mai HTML dentro un PDF. Non uso mai una presentazione quando serve un documento. Il formato sbagliato annulla il lavoro.
 
@@ -180,7 +181,7 @@ Genera HTML5 completo e self-contained:
   },
   {
     name: 'generate_image',
-    description: 'Genera un\'immagine PNG con DALL-E 3 e la salva nella cartella output. Per moodboard, concept visivi, ispirazioni grafiche, stili fotografici.',
+    description: 'Genera una singola immagine PNG con DALL-E 3. Da usare SOLO per illustrazioni AI singole, render fotorealistici o icone. NON per moodboard (usa write_html con layout CSS).',
     input_schema: {
       type: 'object' as const,
       properties: {
