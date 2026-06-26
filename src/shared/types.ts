@@ -14,6 +14,7 @@ export interface Conversation {
   id: string
   title: string
   sourceFiles: string[]
+  sourceUrls: string[]
   contextSummary: string | null
   outputFolder: string | null
   messages: Omit<Message, 'isStreaming' | 'imageBase64' | 'imageName'>[]
@@ -25,6 +26,7 @@ export interface ConversationSummary {
   id: string
   title: string
   sourceFiles: string[]
+  sourceUrls: string[]
   contextSummary: string | null
   outputFolder: string | null
   updatedAt: string

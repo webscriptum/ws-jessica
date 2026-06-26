@@ -72,6 +72,109 @@ function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Orchestrato
   return orchestrators.get(conv.id)!
 }
 
+async function fetchUrlText(url: string): Promise<string> {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WSJessica/1.0)' },
+    signal: AbortSignal.timeout(15_000)
+  })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  const html = await response.text()
+  const text = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return text.slice(0, MAX_FILE_CHARS)
+}
+
+async function resynthesizeContext(
+  conv: Conversation,
+  apiKey: string
+): Promise<{ summary: string | null; error?: string }> {
+  let totalChars = 0
+  const contentBlocks: (Anthropic.DocumentBlockParam | Anthropic.TextBlockParam)[] = []
+
+  for (const filePath of conv.sourceFiles) {
+    const isPdf = extname(filePath).toLowerCase() === '.pdf'
+    if (isPdf) {
+      try {
+        const buffer = await readFile(filePath)
+        contentBlocks.push({
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: buffer.toString('base64') },
+          title: basename(filePath)
+        } as Anthropic.DocumentBlockParam)
+      } catch (e) {
+        contentBlocks.push({
+          type: 'text',
+          text: `### ${basename(filePath)}\n[Errore lettura PDF: ${e instanceof Error ? e.message : String(e)}]`
+        })
+      }
+    } else {
+      try {
+        let content = await extractText(filePath)
+        if (content.length > MAX_FILE_CHARS) {
+          content = content.slice(0, MAX_FILE_CHARS) + '\n\n[…troncato per dimensioni]'
+        }
+        totalChars += content.length
+        if (totalChars > MAX_TOTAL_CHARS) {
+          contentBlocks.push({ type: 'text', text: `### ${basename(filePath)}\n[omesso: limite totale raggiunto]` })
+          continue
+        }
+        contentBlocks.push({ type: 'text', text: `### ${basename(filePath)}\n\n${content}` })
+      } catch (e) {
+        contentBlocks.push({
+          type: 'text',
+          text: `### ${basename(filePath)}\n[Errore lettura: ${e instanceof Error ? e.message : String(e)}]`
+        })
+      }
+    }
+  }
+
+  for (const url of (conv.sourceUrls ?? [])) {
+    try {
+      const text = await fetchUrlText(url)
+      totalChars += text.length
+      if (totalChars > MAX_TOTAL_CHARS) {
+        contentBlocks.push({ type: 'text', text: `### ${url}\n[omesso: limite totale raggiunto]` })
+        continue
+      }
+      contentBlocks.push({ type: 'text', text: `### ${url}\n\n${text}` })
+    } catch (e) {
+      contentBlocks.push({
+        type: 'text',
+        text: `### ${url}\n[Errore fetch: ${e instanceof Error ? e.message : String(e)}]`
+      })
+    }
+  }
+
+  if (contentBlocks.length === 0) return { summary: null }
+
+  try {
+    const client = new Anthropic({ apiKey })
+    const response = await client.messages.create({
+      model: 'claude-opus-4-8',
+      max_tokens: 4096,
+      system: SYNTHESIS_PROMPT,
+      messages: [{ role: 'user', content: contentBlocks }]
+    })
+    const summary =
+      response.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('') || null
+    return { summary }
+  } catch (e) {
+    return { summary: null, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
 export function registerAgentIpc(win: BrowserWindow): void {
   // ── Conversations ──────────────────────────────────────────────────────────
 
@@ -84,6 +187,7 @@ export function registerAgentIpc(win: BrowserWindow): void {
       id: uid(),
       title: 'Nuova chat',
       sourceFiles: [],
+      sourceUrls: [],
       contextSummary: null,
       outputFolder: null,
       messages: [],
@@ -95,7 +199,9 @@ export function registerAgentIpc(win: BrowserWindow): void {
   })
 
   ipcMain.handle('conversations:get', async (_e, id: string): Promise<Conversation | null> => {
-    return getConversation(id)
+    const conv = await getConversation(id)
+    if (conv && !conv.sourceUrls) conv.sourceUrls = []
+    return conv
   })
 
   ipcMain.handle('conversations:delete', async (_e, id: string): Promise<{ ok: boolean }> => {
@@ -114,107 +220,160 @@ export function registerAgentIpc(win: BrowserWindow): void {
     return { ok: true }
   })
 
-  // ── File picking & synthesis ────────────────────────────────────────────────
+  // ── File & URL context management ──────────────────────────────────────────
 
   ipcMain.handle(
-    'files:pick',
-    async (): Promise<{ ok: boolean; paths?: string[] }> => {
-      const result = await dialog.showOpenDialog(win, {
+    'files:addFiles',
+    async (_e, convId: string): Promise<{ ok: boolean; sourceFiles?: string[]; contextSummary?: string | null; error?: string }> => {
+      const pickResult = await dialog.showOpenDialog(win, {
         properties: ['openFile', 'multiSelections'],
-        title: 'Seleziona i file del cliente',
+        title: 'Aggiungi file contesto',
         filters: [
           { name: 'Documenti', extensions: ['md', 'txt', 'pdf', 'docx', 'doc', 'rtf', 'csv', 'json'] },
           { name: 'Tutti i file', extensions: ['*'] }
         ]
       })
-      if (result.canceled || result.filePaths.length === 0) return { ok: false }
-      return { ok: true, paths: result.filePaths }
-    }
-  )
+      if (pickResult.canceled || pickResult.filePaths.length === 0) return { ok: false }
 
-  ipcMain.handle(
-    'files:synthesize',
-    async (
-      _e,
-      convId: string,
-      filePaths: string[]
-    ): Promise<{ ok: boolean; summary?: string; error?: string }> => {
       const apiKey = loadApiKey()
       if (!apiKey) return { ok: false, error: 'API key mancante. Configurala nelle Impostazioni.' }
 
       const conv = await getConversation(convId)
       if (!conv) return { ok: false, error: 'Conversazione non trovata.' }
 
-      let totalChars = 0
-      const contentBlocks: (Anthropic.DocumentBlockParam | Anthropic.TextBlockParam)[] = []
+      const existing = conv.sourceFiles ?? []
+      const newFiles = pickResult.filePaths.filter((p) => !existing.includes(p))
+      conv.sourceFiles = [...existing, ...newFiles]
+      if (!conv.sourceUrls) conv.sourceUrls = []
 
-      for (const filePath of filePaths) {
-        const isPdf = extname(filePath).toLowerCase() === '.pdf'
-        if (isPdf) {
-          // Send PDFs natively to Claude — works with text PDFs and image-based PDFs (e.g. Plaud)
-          try {
-            const buffer = await readFile(filePath)
-            contentBlocks.push({
-              type: 'document',
-              source: { type: 'base64', media_type: 'application/pdf', data: buffer.toString('base64') },
-              title: basename(filePath)
-            } as Anthropic.DocumentBlockParam)
-          } catch (e) {
-            contentBlocks.push({
-              type: 'text',
-              text: `### ${basename(filePath)}\n[Errore lettura PDF: ${e instanceof Error ? e.message : String(e)}]`
-            })
-          }
-        } else {
-          try {
-            let content = await extractText(filePath)
-            if (content.length > MAX_FILE_CHARS) {
-              content = content.slice(0, MAX_FILE_CHARS) + '\n\n[…troncato per dimensioni]'
-            }
-            totalChars += content.length
-            if (totalChars > MAX_TOTAL_CHARS) {
-              contentBlocks.push({ type: 'text', text: `### ${basename(filePath)}\n[omesso: limite totale raggiunto]` })
-              continue
-            }
-            contentBlocks.push({ type: 'text', text: `### ${basename(filePath)}\n\n${content}` })
-          } catch (e) {
-            contentBlocks.push({
-              type: 'text',
-              text: `### ${basename(filePath)}\n[Errore lettura: ${e instanceof Error ? e.message : String(e)}]`
-            })
-          }
-        }
+      if (conv.title === 'Nuova chat' && conv.sourceFiles.length > 0) {
+        conv.title = basename(conv.sourceFiles[0], '.md').replace(/[-_]/g, ' ')
       }
 
-      try {
-        const client = new Anthropic({ apiKey })
-        const response = await client.messages.create({
-          model: 'claude-opus-4-8',
-          max_tokens: 4096,
-          system: SYNTHESIS_PROMPT,
-          messages: [{ role: 'user', content: contentBlocks }]
-        })
+      const { summary, error } = await resynthesizeContext(conv, apiKey)
+      if (error) return { ok: false, error }
 
-        const summary =
-          response.content
-            .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-            .map((b) => b.text)
-            .join('') || null
+      conv.contextSummary = summary
+      conv.updatedAt = new Date().toISOString()
+      await saveConversation(conv)
+      orchestrators.delete(convId)
 
-        conv.sourceFiles = filePaths
+      return { ok: true, sourceFiles: conv.sourceFiles, contextSummary: summary }
+    }
+  )
+
+  ipcMain.handle(
+    'files:removeFile',
+    async (_e, convId: string, path: string): Promise<{ ok: boolean; sourceFiles?: string[]; contextSummary?: string | null }> => {
+      const apiKey = loadApiKey()
+      const conv = await getConversation(convId)
+      if (!conv) return { ok: false }
+
+      conv.sourceFiles = (conv.sourceFiles ?? []).filter((p) => p !== path)
+      if (!conv.sourceUrls) conv.sourceUrls = []
+
+      if (conv.sourceFiles.length === 0 && conv.sourceUrls.length === 0) {
+        conv.contextSummary = null
+      } else if (apiKey) {
+        const { summary } = await resynthesizeContext(conv, apiKey)
         conv.contextSummary = summary
-        if (conv.title === 'Nuova chat' && filePaths.length > 0) {
-          conv.title = basename(filePaths[0], '.md').replace(/[-_]/g, ' ')
-        }
+      }
+
+      conv.updatedAt = new Date().toISOString()
+      await saveConversation(conv)
+      orchestrators.delete(convId)
+
+      return { ok: true, sourceFiles: conv.sourceFiles, contextSummary: conv.contextSummary }
+    }
+  )
+
+  ipcMain.handle(
+    'files:addUrl',
+    async (_e, convId: string, url: string): Promise<{ ok: boolean; sourceUrls?: string[]; contextSummary?: string | null; error?: string }> => {
+      const apiKey = loadApiKey()
+      if (!apiKey) return { ok: false, error: 'API key mancante.' }
+
+      const conv = await getConversation(convId)
+      if (!conv) return { ok: false, error: 'Conversazione non trovata.' }
+
+      if (!conv.sourceUrls) conv.sourceUrls = []
+      if (!conv.sourceFiles) conv.sourceFiles = []
+
+      if (!conv.sourceUrls.includes(url)) conv.sourceUrls.push(url)
+
+      const { summary, error } = await resynthesizeContext(conv, apiKey)
+      if (error) {
+        conv.sourceUrls = conv.sourceUrls.filter((u) => u !== url)
+        return { ok: false, error }
+      }
+
+      conv.contextSummary = summary
+      conv.updatedAt = new Date().toISOString()
+      await saveConversation(conv)
+      orchestrators.delete(convId)
+
+      return { ok: true, sourceUrls: conv.sourceUrls, contextSummary: summary }
+    }
+  )
+
+  ipcMain.handle(
+    'files:removeUrl',
+    async (_e, convId: string, url: string): Promise<{ ok: boolean; sourceUrls?: string[]; contextSummary?: string | null }> => {
+      const apiKey = loadApiKey()
+      const conv = await getConversation(convId)
+      if (!conv) return { ok: false }
+
+      conv.sourceUrls = (conv.sourceUrls ?? []).filter((u) => u !== url)
+      if (!conv.sourceFiles) conv.sourceFiles = []
+
+      if (conv.sourceFiles.length === 0 && conv.sourceUrls.length === 0) {
+        conv.contextSummary = null
+      } else if (apiKey) {
+        const { summary } = await resynthesizeContext(conv, apiKey)
+        conv.contextSummary = summary
+      }
+
+      conv.updatedAt = new Date().toISOString()
+      await saveConversation(conv)
+      orchestrators.delete(convId)
+
+      return { ok: true, sourceUrls: conv.sourceUrls, contextSummary: conv.contextSummary }
+    }
+  )
+
+  ipcMain.handle(
+    'files:pickOutputFolder',
+    async (_e, convId: string): Promise<{ ok: boolean; folder?: string }> => {
+      const result = await dialog.showOpenDialog(win, {
+        properties: ['openDirectory', 'createDirectory'],
+        title: 'Scegli cartella output',
+        buttonLabel: 'Seleziona'
+      })
+      if (result.canceled || !result.filePaths[0]) return { ok: false }
+      const folder = result.filePaths[0]
+
+      const conv = await getConversation(convId)
+      if (conv) {
+        conv.outputFolder = folder
         conv.updatedAt = new Date().toISOString()
         await saveConversation(conv)
-
-        orchestrators.delete(convId)
-
-        return { ok: true, summary: summary ?? undefined }
-      } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : String(e) }
       }
+      orchestrators.get(convId)?.updateOutputFolder(folder)
+
+      return { ok: true, folder }
+    }
+  )
+
+  ipcMain.handle(
+    'files:setOutputFolder',
+    async (_e, convId: string, folder: string): Promise<{ ok: boolean }> => {
+      const conv = await getConversation(convId)
+      if (!conv) return { ok: false }
+      conv.outputFolder = folder
+      conv.updatedAt = new Date().toISOString()
+      await saveConversation(conv)
+      orchestrators.get(convId)?.updateOutputFolder(folder)
+      return { ok: true }
     }
   )
 

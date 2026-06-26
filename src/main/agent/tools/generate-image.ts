@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'fs/promises'
 import { join } from 'path'
+import { resolveUniqueFilename } from './resolve-unique-filename'
 import type { DeliverableWritten } from '../../../shared/types'
 
 interface GenerateImageResult extends DeliverableWritten {
@@ -36,7 +37,8 @@ export async function generateImage(
   const base64 = data.data[0].b64_json
 
   await mkdir(outputDir, { recursive: true })
-  const safeName = filename.endsWith('.png') ? filename : `${filename}.png`
+  const rawName = filename.endsWith('.png') ? filename : `${filename}.png`
+  const safeName = await resolveUniqueFilename(outputDir, rawName)
   const filePath = join(outputDir, safeName)
   await writeFile(filePath, Buffer.from(base64, 'base64'))
 

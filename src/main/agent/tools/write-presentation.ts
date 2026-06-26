@@ -1,5 +1,6 @@
 import { mkdir } from 'fs/promises'
 import { join } from 'path'
+import { resolveUniqueFilename } from './resolve-unique-filename'
 import pptxgen from 'pptxgenjs'
 import type { DeliverableWritten } from '../../../shared/types'
 
@@ -35,7 +36,8 @@ export async function writePresentation(
   content: string
 ): Promise<DeliverableWritten> {
   await mkdir(outputDir, { recursive: true })
-  const finalFilename = filename.endsWith('.pptx') ? filename : filename + '.pptx'
+  const rawName = filename.endsWith('.pptx') ? filename : filename + '.pptx'
+  const finalFilename = await resolveUniqueFilename(outputDir, rawName)
   const filePath = join(outputDir, finalFilename)
 
   const pres = new pptxgen()

@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { mkdir, writeFile, unlink } from 'fs/promises'
 import { join } from 'path'
+import { resolveUniqueFilename } from './resolve-unique-filename'
 import type { DeliverableWritten } from '../../../shared/types'
 
 interface Colors {
@@ -423,7 +424,8 @@ export async function writePdf(
   content: string
 ): Promise<DeliverableWritten> {
   await mkdir(outputDir, { recursive: true })
-  const finalFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`
+  const rawName = filename.endsWith('.pdf') ? filename : `${filename}.pdf`
+  const finalFilename = await resolveUniqueFilename(outputDir, rawName)
   const filePath = join(outputDir, finalFilename)
   const docTitle = filename.replace(/\.pdf$/i, '')
   const tmpHtml = join(app.getPath('temp'), `ws-pdf-${Date.now()}.html`)

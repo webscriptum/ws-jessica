@@ -9,6 +9,7 @@ export interface ConversationSummary {
   id: string
   title: string
   sourceFiles: string[]
+  sourceUrls: string[]
   contextSummary: string | null
   outputFolder: string | null
   updatedAt: string
@@ -19,6 +20,7 @@ export interface Conversation {
   id: string
   title: string
   sourceFiles: string[]
+  sourceUrls: string[]
   contextSummary: string | null
   outputFolder: string | null
   messages: Array<{ id: string; role: 'user' | 'assistant'; content: string; timestamp: string }>
@@ -34,12 +36,13 @@ export interface ElectronAPI {
   deleteConversation: (id: string) => Promise<{ ok: boolean }>
   renameConversation: (id: string, title: string) => Promise<{ ok: boolean }>
 
-  // File picking & context synthesis
-  pickFiles: () => Promise<{ ok: boolean; paths?: string[] }>
-  synthesizeContext: (
-    convId: string,
-    paths: string[]
-  ) => Promise<{ ok: boolean; summary?: string; error?: string }>
+  // File & URL context management
+  addFiles: (convId: string) => Promise<{ ok: boolean; sourceFiles?: string[]; contextSummary?: string | null; error?: string }>
+  removeFile: (convId: string, path: string) => Promise<{ ok: boolean; sourceFiles?: string[]; contextSummary?: string | null }>
+  addUrl: (convId: string, url: string) => Promise<{ ok: boolean; sourceUrls?: string[]; contextSummary?: string | null; error?: string }>
+  removeUrl: (convId: string, url: string) => Promise<{ ok: boolean; sourceUrls?: string[]; contextSummary?: string | null }>
+  pickOutputFolder: (convId: string) => Promise<{ ok: boolean; folder?: string }>
+  setOutputFolder: (convId: string, folder: string) => Promise<{ ok: boolean }>
   openDeliverables: () => Promise<{ ok: boolean }>
 
   // Agent

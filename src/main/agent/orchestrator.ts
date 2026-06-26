@@ -215,6 +215,10 @@ export class Orchestrator {
       : BASE_SYSTEM_PROMPT
   }
 
+  updateOutputFolder(folder: string): void {
+    this.outputFolder = folder
+  }
+
   private async resolveOutputDir(): Promise<string> {
     if (!this.outputFolder) {
       const result = await dialog.showOpenDialog(this.mainWindow, {

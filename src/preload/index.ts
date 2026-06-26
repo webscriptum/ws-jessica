@@ -8,10 +8,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteConversation: (id: string) => ipcRenderer.invoke('conversations:delete', id),
   renameConversation: (id: string, title: string) => ipcRenderer.invoke('conversations:rename', id, title),
 
-  // File picking & context synthesis
-  pickFiles: () => ipcRenderer.invoke('files:pick'),
-  synthesizeContext: (convId: string, paths: string[]) =>
-    ipcRenderer.invoke('files:synthesize', convId, paths),
+  // File & URL context management
+  addFiles: (convId: string) => ipcRenderer.invoke('files:addFiles', convId),
+  removeFile: (convId: string, path: string) => ipcRenderer.invoke('files:removeFile', convId, path),
+  addUrl: (convId: string, url: string) => ipcRenderer.invoke('files:addUrl', convId, url),
+  removeUrl: (convId: string, url: string) => ipcRenderer.invoke('files:removeUrl', convId, url),
+  pickOutputFolder: (convId: string) => ipcRenderer.invoke('files:pickOutputFolder', convId),
+  setOutputFolder: (convId: string, folder: string) => ipcRenderer.invoke('files:setOutputFolder', convId, folder),
   openDeliverables: () => ipcRenderer.invoke('files:open-deliverables'),
 
   // Agent

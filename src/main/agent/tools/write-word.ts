@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'fs/promises'
 import { join } from 'path'
+import { resolveUniqueFilename } from './resolve-unique-filename'
 import {
   Document,
   Packer,
@@ -53,7 +54,8 @@ export async function writeWord(
   content: string
 ): Promise<DeliverableWritten> {
   await mkdir(outputDir, { recursive: true })
-  const finalFilename = filename.endsWith('.docx') ? filename : filename + '.docx'
+  const rawName = filename.endsWith('.docx') ? filename : filename + '.docx'
+  const finalFilename = await resolveUniqueFilename(outputDir, rawName)
   const filePath = join(outputDir, finalFilename)
 
   const doc = new Document({
