@@ -76,12 +76,37 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'write_pdf',
-    description: 'Salva un deliverable come PDF impaginato con grafica Webscriptum (.pdf). Per brand book, style guide e documenti da consegnare al cliente.',
+    description: `Genera un PDF impaginato con grafica professionale e brand colors. Usa per brochure, cataloghi, company profile, presentazioni-PDF, brand book.
+
+FORMATO CONTENUTO — usa questi elementi per ottenere una grafica ricca:
+
+[COLORI:#HEX_primario,#HEX_scuro,#HEX_neutro]  ← PRIMA RIGA OBBLIGATORIA: palette del cliente. Es. [COLORI:#FFCC00,#1A1A1A,#808080] per giallo/nero/grigio. Default: teal Webscriptum.
+
+# Nome Documento  ← diventa copertina a pagina intera con sfondo scuro e titolo grande
+## Sottotitolo copertina  ← riga supplementare sulla copertina
+Eventuale tagline o anno  ← ulteriore riga sulla copertina
+             ← riga vuota chiude la copertina, iniziano le pagine di contenuto
+
+## Titolo Sezione  ← banda colorata piena larghezza con testo bianco
+### Nome Prodotto / Elemento  ← card con bordo colorato, titolo su sfondo grigio chiaro
+[IMG]  ← segnaposto immagine (dentro card → flottante a destra; fuori → blocco pieno)
+Testo descrittivo normale...
+- punto elenco con pallino colorato
+**grassetto**  *corsivo*
+
+---  ← interruzione di pagina esplicita
+
+REGOLE:
+- Inizia SEMPRE con [COLORI:...] usando i colori del cliente
+- Il primo # crea la copertina: metti sempre almeno # e ## sulla copertina
+- Per cataloghi: ogni ### è un prodotto con [IMG] dentro
+- Per company profile: usa ## per le sezioni (Chi siamo, Valori, Servizi, Contatti)
+- Per brand book: usa ## per capitoli, ### per elementi di identità`,
     input_schema: {
       type: 'object' as const,
       properties: {
         filename: { type: 'string', description: 'Nome file con estensione .pdf' },
-        content: { type: 'string', description: 'Contenuto in formato markdown' }
+        content: { type: 'string', description: 'Contenuto con direttive di layout (vedi formato nella descrizione del tool)' }
       },
       required: ['filename', 'content']
     }
