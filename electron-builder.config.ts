@@ -1,0 +1,34 @@
+import type { Configuration } from 'electron-builder'
+
+const config: Configuration = {
+  appId: 'com.webscriptum.jessica',
+  productName: 'WS Jessica',
+  directories: {
+    buildResources: 'resources',
+    output: 'release'
+  },
+  files: ['out/**/*'],
+  publish: {
+    provider: 'github',
+    owner: 'webscriptum',
+    repo: 'ws-jessica'
+  },
+  mac: {
+    target: [{ target: 'dmg', arch: ['x64', 'arm64'] }],
+    icon: 'resources/icon.icns',
+    hardenedRuntime: true,
+    gatekeeperAssess: false,
+    entitlements: 'resources/entitlements.mac.plist',
+    entitlementsInherit: 'resources/entitlements.mac.plist'
+  },
+  win: {
+    target: [{ target: 'nsis', arch: ['x64'] }],
+    icon: 'resources/icon.ico'
+  },
+  nsis: {
+    oneClick: false,
+    allowToChangeInstallationDirectory: true
+  }
+}
+
+export default config

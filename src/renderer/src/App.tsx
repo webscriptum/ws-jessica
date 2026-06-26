@@ -1,0 +1,121 @@
+import { useState, useEffect, useCallback } from 'react'
+import Sidebar from './components/Sidebar'
+import ChatWindow from './components/ChatWindow'
+import SettingsScreen from './components/SettingsScreen'
+import type { ConversationSummary, Conversation } from '../../preload/index.d'
+
+type View = 'chat' | 'settings'
+
+export default function App(): JSX.Element {
+  const [conversations, setConversations] = useState<ConversationSummary[]>([])
+  const [activeConv, setActiveConv] = useState<Conversation | null>(null)
+  const [view, setView] = useState<View>('chat')
+
+  const refreshConversations = useCallback(async () => {
+    const list = await window.electronAPI.listConversations()
+    setConversations(list)
+  }, [])
+
+  useEffect(() => {
+    async function init(): Promise<void> {
+      const list = await window.electronAPI.listConversations()
+      setConversations(list)
+      if (list.length > 0) {
+        const conv = await window.electronAPI.getConversation(list[0].id)
+        setActiveConv(conv)
+      } else {
+        const conv = await window.electronAPI.createConversation()
+        setConversations([
+          {
+            id: conv.id,
+            title: conv.title,
+            sourceFiles: conv.sourceFiles,
+            contextSummary: conv.contextSummary,
+            updatedAt: conv.updatedAt,
+            messageCount: 0
+          }
+        ])
+        setActiveConv(conv)
+      }
+    }
+    init()
+  }, [])
+
+  const handleSelectConversation = async (id: string): Promise<void> => {
+    const conv = await window.electronAPI.getConversation(id)
+    setActiveConv(conv)
+    setView('chat')
+  }
+
+  const handleNewChat = async (): Promise<void> => {
+    const conv = await window.electronAPI.createConversation()
+    setActiveConv(conv)
+    await refreshConversations()
+    setView('chat')
+  }
+
+  const handleDeleteConversation = async (id: string): Promise<void> => {
+    await window.electronAPI.deleteConversation(id)
+    const newList = conversations.filter((c) => c.id !== id)
+    setConversations(newList)
+
+    if (activeConv?.id === id) {
+      if (newList.length > 0) {
+        const conv = await window.electronAPI.getConversation(newList[0].id)
+        setActiveConv(conv)
+      } else {
+        const conv = await window.electronAPI.createConversation()
+        setActiveConv(conv)
+        setConversations([
+          {
+            id: conv.id,
+            title: conv.title,
+            sourceFiles: conv.sourceFiles,
+            contextSummary: conv.contextSummary,
+            updatedAt: conv.updatedAt,
+            messageCount: 0
+          }
+        ])
+      }
+    }
+  }
+
+  const handleConversationUpdate = useCallback(async () => {
+    await refreshConversations()
+    if (activeConv) {
+      const updated = await window.electronAPI.getConversation(activeConv.id)
+      if (updated) setActiveConv(updated)
+    }
+  }, [activeConv, refreshConversations])
+
+  return (
+    <div className="app">
+      <Sidebar
+        conversations={conversations}
+        activeId={activeConv?.id ?? null}
+        onSelect={handleSelectConversation}
+        onCreate={handleNewChat}
+        onDelete={handleDeleteConversation}
+        onSettings={() => setView('settings')}
+      />
+      <main className="app-main">
+        {view === 'settings' ? (
+          <SettingsScreen />
+        ) : activeConv ? (
+          <ChatWindow
+            key={activeConv.id}
+            conversationId={activeConv.id}
+            onConversationUpdate={handleConversationUpdate}
+          />
+        ) : (
+          <div
+            className="empty-state"
+            style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <p>Seleziona o crea una chat dalla sidebar.</p>
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}

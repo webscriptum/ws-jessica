@@ -1,0 +1,52 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: win
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (Mac)
+        if: matrix.platform == 'mac'
+        env:
+          # Code signing — add these secrets in GitHub repo settings to enable signing
+          # CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          # CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build && npx electron-builder --mac --publish always
+
+      - name: Build (Windows)
+        if: matrix.platform == 'win'
+        env:
+          # Code signing — add these secrets in GitHub repo settings to enable signing
+          # WIN_CSC_LINK: ${{ secrets.WIN_CERT_P12_BASE64 }}
+          # WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build && npx electron-builder --win --publish always

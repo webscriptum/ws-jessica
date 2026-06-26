@@ -1,0 +1,64 @@
+export interface Deliverable {
+  filename: string
+  path: string
+}
+
+export interface ConversationSummary {
+  id: string
+  title: string
+  sourceFiles: string[]
+  contextSummary: string | null
+  outputFolder: string | null
+  updatedAt: string
+  messageCount: number
+}
+
+export interface Conversation {
+  id: string
+  title: string
+  sourceFiles: string[]
+  contextSummary: string | null
+  outputFolder: string | null
+  messages: Array<{ id: string; role: 'user' | 'assistant'; content: string; timestamp: string }>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ElectronAPI {
+  // Conversations
+  listConversations: () => Promise<ConversationSummary[]>
+  createConversation: () => Promise<Conversation>
+  getConversation: (id: string) => Promise<Conversation | null>
+  deleteConversation: (id: string) => Promise<{ ok: boolean }>
+
+  // File picking & context synthesis
+  pickFiles: () => Promise<{ ok: boolean; paths?: string[] }>
+  synthesizeContext: (
+    convId: string,
+    paths: string[]
+  ) => Promise<{ ok: boolean; summary?: string; error?: string }>
+  openDeliverables: () => Promise<{ ok: boolean }>
+
+  // Agent
+  sendMessage: (convId: string, msg: string) => Promise<{
+    deliverables: Deliverable[]
+    conversationTitle: string
+  }>
+  cancelAgent: (convId: string) => Promise<{ ok: boolean }>
+
+  // Agent events
+  onToken: (cb: (token: string) => void) => () => void
+  onDone: (cb: (r: { deliverables: Deliverable[] }) => void) => () => void
+  onError: (cb: (e: string) => void) => () => void
+  onDeliverable: (cb: (d: Deliverable) => void) => () => void
+
+  // Settings
+  getSettings: () => Promise<{ hasApiKey: boolean }>
+  saveSettings: (s: { apiKey?: string }) => Promise<{ ok: boolean }>
+}
+
+declare global {
+  interface Window {
+    electronAPI: ElectronAPI
+  }
+}
