@@ -3,8 +3,9 @@ import { basename, extname } from 'path'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mammoth = require('mammoth') as { extractRawText: (opts: { path: string }) => Promise<{ value: string }> }
+// Use the internal lib path to avoid the pdf-parse index.js test-file bug in packaged apps
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse') as (buffer: Buffer) => Promise<{ text: string }>
+const pdfParse = require('pdf-parse/lib/pdf-parse.js') as (buffer: Buffer) => Promise<{ text: string }>
 
 async function extractText(filePath: string): Promise<string> {
   const ext = extname(filePath).toLowerCase()

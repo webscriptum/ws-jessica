@@ -1,5 +1,6 @@
 import { ipcMain, dialog, shell, app, BrowserWindow } from 'electron'
-import { basename, join } from 'path'
+import { readFile } from 'fs/promises'
+import { basename, extname, join } from 'path'
 import Anthropic, { RateLimitError } from '@anthropic-ai/sdk'
 import { extractText } from '../agent/tools/read-source-file'
 import { loadApiKey } from '../storage/secure-storage'
@@ -136,23 +137,43 @@ export function registerAgentIpc(win: BrowserWindow): void {
       if (!conv) return { ok: false, error: 'Conversazione non trovata.' }
 
       let totalChars = 0
-      const fileSections: string[] = []
+      const contentBlocks: (Anthropic.DocumentBlockParam | Anthropic.TextBlockParam)[] = []
+
       for (const filePath of filePaths) {
-        try {
-          let content = await extractText(filePath)
-          if (content.length > MAX_FILE_CHARS) {
-            content = content.slice(0, MAX_FILE_CHARS) + '\n\n[…troncato per dimensioni]'
+        const isPdf = extname(filePath).toLowerCase() === '.pdf'
+        if (isPdf) {
+          // Send PDFs natively to Claude — works with text PDFs and image-based PDFs (e.g. Plaud)
+          try {
+            const buffer = await readFile(filePath)
+            contentBlocks.push({
+              type: 'document',
+              source: { type: 'base64', media_type: 'application/pdf', data: buffer.toString('base64') },
+              title: basename(filePath)
+            } as Anthropic.DocumentBlockParam)
+          } catch (e) {
+            contentBlocks.push({
+              type: 'text',
+              text: `### ${basename(filePath)}\n[Errore lettura PDF: ${e instanceof Error ? e.message : String(e)}]`
+            })
           }
-          totalChars += content.length
-          if (totalChars > MAX_TOTAL_CHARS) {
-            fileSections.push(`### ${basename(filePath)}\n[omesso: limite totale raggiunto]`)
-            continue
+        } else {
+          try {
+            let content = await extractText(filePath)
+            if (content.length > MAX_FILE_CHARS) {
+              content = content.slice(0, MAX_FILE_CHARS) + '\n\n[…troncato per dimensioni]'
+            }
+            totalChars += content.length
+            if (totalChars > MAX_TOTAL_CHARS) {
+              contentBlocks.push({ type: 'text', text: `### ${basename(filePath)}\n[omesso: limite totale raggiunto]` })
+              continue
+            }
+            contentBlocks.push({ type: 'text', text: `### ${basename(filePath)}\n\n${content}` })
+          } catch (e) {
+            contentBlocks.push({
+              type: 'text',
+              text: `### ${basename(filePath)}\n[Errore lettura: ${e instanceof Error ? e.message : String(e)}]`
+            })
           }
-          fileSections.push(`### ${basename(filePath)}\n\n${content}`)
-        } catch (e) {
-          fileSections.push(
-            `### ${basename(filePath)}\n[Errore lettura: ${e instanceof Error ? e.message : String(e)}]`
-          )
         }
       }
 
@@ -162,7 +183,7 @@ export function registerAgentIpc(win: BrowserWindow): void {
           model: 'claude-opus-4-8',
           max_tokens: 4096,
           system: SYNTHESIS_PROMPT,
-          messages: [{ role: 'user', content: fileSections.join('\n\n---\n\n') }]
+          messages: [{ role: 'user', content: contentBlocks }]
         })
 
         const summary =
