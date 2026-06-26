@@ -428,8 +428,14 @@ export async function writePdf(
   const docTitle = filename.replace(/\.pdf$/i, '')
   const tmpHtml = join(app.getPath('temp'), `ws-pdf-${Date.now()}.html`)
 
-  const { colors, content: cleanContent } = extractColors(content)
-  const html = buildHtml(cleanContent, colors, docTitle)
+  const isHtml = content.trimStart().startsWith('<')
+  let html: string
+  if (isHtml) {
+    html = content
+  } else {
+    const { colors, content: cleanContent } = extractColors(content)
+    html = buildHtml(cleanContent, colors, docTitle)
+  }
 
   await writeFile(tmpHtml, html, 'utf-8')
 

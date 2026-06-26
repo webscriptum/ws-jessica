@@ -28,11 +28,18 @@ Regole operative:
 Formati di output disponibili — chiedi sempre all'utente quale preferisce se non è ovvio:
 - write_deliverable → file .md (note interne, bozze, working documents)
 - write_word → documento Word .docx (documenti professionali per il team o il cliente)
-- write_pdf → PDF impaginato .pdf (brand book, style guide, documenti graficamente curati)
+- write_pdf → PDF impaginato .pdf con grafica su misura (brochure, catalogo, company profile, brand book)
 - write_presentation → presentazione PowerPoint .pptx (pitch deck, brand presentation, slide da mostrare al cliente)
 - generate_image → immagine PNG generata da AI (DALL-E 3) — per moodboard, concept visivi, ispirazioni grafiche
 
-Approccio:
+Design adattivo per documenti grafici (brochure, catalogo, company profile, presentazione-PDF):
+- Prima di progettare, estraggo sempre dall'identità visiva del CONTESTO CLIENTE: colori primari, stile grafico (industriale, luxury, minimal, creativo, corporate), eventuali reference
+- Progetto un layout HTML originale che rispecchia quel cliente — non uso mai un template generico
+- Il layout deve comunicare il posizionamento: es. industriale → geometrie bold, contrasti netti; luxury → spazio bianco, serif, oro; startup → colori vivaci, asimmetria; corporate → griglia rigorosa, blu/grigio
+- Se i colori del cliente non sono nel contesto, li chiedo prima di procedere
+- Per report, note interne e documenti testuali uso invece la modalità markdown
+
+Approccio generale:
 - Se una richiesta è ambigua, fai al massimo due domande di chiarimento prima di procedere
 - Offri proattivamente varianti e alternative quando utile
 - Segnala esplicitamente se mancano informazioni necessarie`
@@ -76,32 +83,32 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'write_pdf',
-    description: `Genera un PDF impaginato con grafica professionale e brand colors. Usa per brochure, cataloghi, company profile, presentazioni-PDF, brand book.
+    description: `Genera un PDF impaginato. Due modalità:
 
-FORMATO CONTENUTO — usa questi elementi per ottenere una grafica ricca:
+━━ MODALITÀ HTML (documenti grafici: brochure, catalogo, company profile, brand book) ━━
+Genera HTML+CSS completo che inizia con <!DOCTYPE html>. Progetta liberamente il layout in base all'identità visiva del cliente.
 
-[COLORI:#HEX_primario,#HEX_scuro,#HEX_neutro]  ← PRIMA RIGA OBBLIGATORIA: palette del cliente. Es. [COLORI:#FFCC00,#1A1A1A,#808080] per giallo/nero/grigio. Default: teal Webscriptum.
+CSS OBBLIGATORI per la stampa A4 (includili sempre nel <style>):
+  @page { size: A4; margin: 0; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; margin: 0; padding: 0; }
+  .pbreak { page-break-after: always; break-after: page; height: 0; display: block; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; }
 
-# Nome Documento  ← diventa copertina a pagina intera con sfondo scuro e titolo grande
-## Sottotitolo copertina  ← riga supplementare sulla copertina
-Eventuale tagline o anno  ← ulteriore riga sulla copertina
-             ← riga vuota chiude la copertina, iniziano le pagine di contenuto
+Pattern consigliati:
+  Copertina → div con background colorato, min-height:100vh, page-break-after:always, contenuto in fondo (align-items:flex-end)
+  Sezione → div con background colorato, padding 12px 20mm, font-weight:bold, text-transform:uppercase
+  Card elemento → border-top:3px solid [colore], border:1px solid #eee, border-radius:4px, padding:16px
+  Griglia 2 colonne → display:grid; grid-template-columns:1fr 1fr; gap:16px
+  Placeholder immagine → background:#f0f0f0; border:1px dashed #ccc; display:flex; align-items:center; justify-content:center
+  Interruzione di pagina → <div class="pbreak"></div>
 
-## Titolo Sezione  ← banda colorata piena larghezza con testo bianco
-### Nome Prodotto / Elemento  ← card con bordo colorato, titolo su sfondo grigio chiaro
-[IMG]  ← segnaposto immagine (dentro card → flottante a destra; fuori → blocco pieno)
-Testo descrittivo normale...
-- punto elenco con pallino colorato
-**grassetto**  *corsivo*
+Adatta dimensioni font in pt (non px): titoli 28-48pt, sottotitoli 12-16pt, corpo 9.5-10.5pt.
+Usa i colori del cliente dall'identità visiva nel contesto — non i colori Webscriptum.
 
----  ← interruzione di pagina esplicita
-
-REGOLE:
-- Inizia SEMPRE con [COLORI:...] usando i colori del cliente
-- Il primo # crea la copertina: metti sempre almeno # e ## sulla copertina
-- Per cataloghi: ogni ### è un prodotto con [IMG] dentro
-- Per company profile: usa ## per le sezioni (Chi siamo, Valori, Servizi, Contatti)
-- Per brand book: usa ## per capitoli, ### per elementi di identità`,
+━━ MODALITÀ MARKDOWN (report, note, bozze) ━━
+[COLORI:#primary,#dark,#neutral] — prima riga opzionale per i colori
+# Titolo → copertina a pagina intera  |  ## Sezione → banda colorata full-width
+### Elemento → card con bordo  |  [IMG] → placeholder immagine  |  --- → interruzione pagina`,
     input_schema: {
       type: 'object' as const,
       properties: {

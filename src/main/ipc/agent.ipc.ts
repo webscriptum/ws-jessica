@@ -27,6 +27,8 @@ Struttura il documento con queste sezioni (ometti quelle per cui non hai informa
 ## Settore e mercato
 ## Posizionamento e differenziatori
 ## Brand voice e valori
+## Identità visiva
+(colori primari con HEX se disponibili; stile grafico — es. minimal, industriale, luxury, corporate, creativo; font o tipografia citati; brand o competitor visivi citati come riferimento; materiali grafici esistenti descritti)
 ## Insight chiave (dalle ricerche/interviste)
 ## Note operative per il team creativo`
 
