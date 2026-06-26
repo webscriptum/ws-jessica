@@ -1,21 +1,22 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { saveApiKey, loadApiKey, saveOpenAiKey, loadOpenAiKey } from '../storage/secure-storage'
 import { loadAppSettings, saveAppSettings } from '../storage/app-settings'
-import type { VoiceMode } from '../storage/app-settings'
+import type { VoiceMode, ModelMode } from '../storage/app-settings'
 
 export function registerSettingsIpc(_win: BrowserWindow): void {
   ipcMain.handle('settings:get', () => {
-    const { voiceMode } = loadAppSettings()
+    const { voiceMode, modelMode } = loadAppSettings()
     return {
       hasApiKey: !!loadApiKey(),
       hasOpenAiKey: !!loadOpenAiKey(),
-      voiceMode
+      voiceMode,
+      modelMode
     }
   })
 
   ipcMain.handle(
     'settings:save',
-    (_e, settings: { apiKey?: string; openAiKey?: string; voiceMode?: VoiceMode }) => {
+    (_e, settings: { apiKey?: string; openAiKey?: string; voiceMode?: VoiceMode; modelMode?: ModelMode }) => {
       if (settings.apiKey && settings.apiKey !== '••••••••') {
         saveApiKey(settings.apiKey)
       }
@@ -24,6 +25,9 @@ export function registerSettingsIpc(_win: BrowserWindow): void {
       }
       if (settings.voiceMode) {
         saveAppSettings({ voiceMode: settings.voiceMode })
+      }
+      if (settings.modelMode) {
+        saveAppSettings({ modelMode: settings.modelMode })
       }
       return { ok: true }
     }

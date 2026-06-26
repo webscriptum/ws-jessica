@@ -1,4 +1,5 @@
 export type VoiceMode = 'off' | 'voice-to-text' | 'conversation'
+export type ModelMode = 'sonnet' | 'opus'
 
 export interface Deliverable {
   filename: string
@@ -63,8 +64,8 @@ export interface ElectronAPI {
   onImage: (cb: (img: { filename: string; base64: string }) => void) => () => void
 
   // Settings
-  getSettings: () => Promise<{ hasApiKey: boolean; hasOpenAiKey: boolean; voiceMode: VoiceMode }>
-  saveSettings: (s: { apiKey?: string; openAiKey?: string; voiceMode?: VoiceMode }) => Promise<{ ok: boolean }>
+  getSettings: () => Promise<{ hasApiKey: boolean; hasOpenAiKey: boolean; voiceMode: VoiceMode; modelMode: ModelMode }>
+  saveSettings: (s: { apiKey?: string; openAiKey?: string; voiceMode?: VoiceMode; modelMode?: ModelMode }) => Promise<{ ok: boolean }>
 
   // Version & updater
   getVersion: () => Promise<string>

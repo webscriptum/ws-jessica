@@ -4,6 +4,7 @@ import { basename, extname, join } from 'path'
 import Anthropic, { RateLimitError } from '@anthropic-ai/sdk'
 import { extractText } from '../agent/tools/read-source-file'
 import { loadApiKey } from '../storage/secure-storage'
+import { loadAppSettings } from '../storage/app-settings'
 import { Orchestrator } from '../agent/orchestrator'
 import {
   listConversations,
@@ -56,6 +57,7 @@ function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Orchestrato
         await saveConversation(fresh)
       }
     }
+    const { modelMode } = loadAppSettings()
     orchestrators.set(
       conv.id,
       new Orchestrator(
@@ -65,7 +67,8 @@ function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Orchestrato
         conv.contextSummary,
         conv.outputFolder,
         onFolderPicked,
-        win
+        win,
+        modelMode
       )
     )
   }

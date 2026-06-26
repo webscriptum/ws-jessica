@@ -12,7 +12,8 @@ import { detectSpecialty, SPECIALIST_PROMPTS } from './specialists'
 import { loadOpenAiKey } from '../storage/secure-storage'
 import type { DeliverableWritten } from '../../shared/types'
 
-const MODEL = 'claude-opus-4-8'
+const MODEL_SONNET = 'claude-sonnet-4-6'
+const MODEL_OPUS = 'claude-opus-4-8'
 const RATE_LIMIT_WAIT_MS = 65_000
 
 const BASE_SYSTEM_PROMPT = `Sei Jessica, l'assistente AI di Webscriptum — un'agenzia creativa italiana.
@@ -199,6 +200,7 @@ export class Orchestrator {
   private cancelled = false
   private systemPrompt: string
   private outputFolder: string | null
+  private model: string
 
   constructor(
     private apiKey: string,
@@ -207,10 +209,12 @@ export class Orchestrator {
     contextSummary: string | null,
     outputFolder: string | null,
     private onOutputFolderPicked: (folder: string) => void,
-    private mainWindow: BrowserWindow
+    private mainWindow: BrowserWindow,
+    modelMode: 'sonnet' | 'opus' = 'sonnet'
   ) {
     this.client = new Anthropic({ apiKey: this.apiKey, maxRetries: 2 })
     this.outputFolder = outputFolder
+    this.model = modelMode === 'opus' ? MODEL_OPUS : MODEL_SONNET
     this.systemPrompt = contextSummary
       ? `${BASE_SYSTEM_PROMPT}\n\n---\n\n## CONTESTO CLIENTE\n\n${contextSummary}`
       : BASE_SYSTEM_PROMPT
@@ -250,8 +254,8 @@ export class Orchestrator {
     while (true) {
       try {
         const stream = this.client.messages.stream({
-          model: MODEL,
-          max_tokens: 8192,
+          model: this.model,
+          max_tokens: 16000,
           system: activeSystem,
           messages: this.conversation,
           tools: activeTools

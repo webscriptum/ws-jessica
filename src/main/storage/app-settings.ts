@@ -3,12 +3,14 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 
 export type VoiceMode = 'off' | 'voice-to-text' | 'conversation'
+export type ModelMode = 'sonnet' | 'opus'
 
 interface AppSettings {
   voiceMode: VoiceMode
+  modelMode: ModelMode
 }
 
-const DEFAULTS: AppSettings = { voiceMode: 'off' }
+const DEFAULTS: AppSettings = { voiceMode: 'off', modelMode: 'sonnet' }
 
 function settingsPath(): string {
   return join(app.getPath('userData'), 'app-settings.json')

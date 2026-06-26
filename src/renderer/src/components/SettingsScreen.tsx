@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { VoiceMode } from '../../../preload/index.d'
+import type { VoiceMode, ModelMode } from '../../../preload/index.d'
 
 type UpdaterStatus = 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' | 'error'
 
@@ -9,6 +9,7 @@ export default function SettingsScreen(): JSX.Element {
   const [openAiKey, setOpenAiKey] = useState('')
   const [hasOpenAiKey, setHasOpenAiKey] = useState(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('off')
+  const [modelMode, setModelMode] = useState<ModelMode>('sonnet')
   const [saved, setSaved] = useState(false)
   const [version, setVersion] = useState('')
   const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatus>('idle')
@@ -22,6 +23,7 @@ export default function SettingsScreen(): JSX.Element {
       setHasOpenAiKey(s.hasOpenAiKey)
       setOpenAiKey(s.hasOpenAiKey ? '••••••••' : '')
       setVoiceMode(s.voiceMode)
+      setModelMode(s.modelMode)
     })
     window.electronAPI.getVersion().then(setVersion)
 
@@ -37,7 +39,8 @@ export default function SettingsScreen(): JSX.Element {
     await window.electronAPI.saveSettings({
       apiKey: apiKey !== '••••••••' ? apiKey : undefined,
       openAiKey: openAiKey !== '••••••••' ? openAiKey : undefined,
-      voiceMode
+      voiceMode,
+      modelMode
     })
     if (apiKey && apiKey !== '••••••••') setHasApiKey(true)
     if (openAiKey && openAiKey !== '••••••••') setHasOpenAiKey(true)
@@ -128,6 +131,30 @@ export default function SettingsScreen(): JSX.Element {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* ── Modello AI ── */}
+        <div className="settings-card">
+          <div className="settings-card-title">Modello AI</div>
+          <div className="voice-seg">
+            <button
+              className={`voice-seg-btn ${modelMode === 'sonnet' ? 'active' : ''}`}
+              onClick={() => setModelMode('sonnet')}
+            >
+              <span className="voice-seg-label">Veloce</span>
+              <span className="voice-seg-desc">Claude Sonnet — risposta rapida</span>
+            </button>
+            <button
+              className={`voice-seg-btn ${modelMode === 'opus' ? 'active' : ''}`}
+              onClick={() => setModelMode('opus')}
+            >
+              <span className="voice-seg-label">Alta qualità</span>
+              <span className="voice-seg-desc">Claude Opus — più lento, più preciso</span>
+            </button>
+          </div>
+          <p className="settings-hint" style={{ marginTop: 8 }}>
+            Sonnet è consigliato per quasi tutto. Opus può aiutare su strategia complessa o testi critici.
+          </p>
         </div>
 
         {/* ── Save ── */}
