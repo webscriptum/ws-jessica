@@ -5,9 +5,6 @@ import { registerAgentIpc } from './ipc/agent.ipc'
 import { registerSettingsIpc } from './ipc/settings.ipc'
 import { registerVoiceIpc } from './ipc/voice.ipc'
 
-autoUpdater.autoDownload = true
-autoUpdater.autoInstallOnAppQuit = true
-
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
@@ -121,6 +118,9 @@ function registerUpdaterIpc(): void {
 }
 
 app.whenReady().then(() => {
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
   createWindow()
 
   const win = mainWindow!
