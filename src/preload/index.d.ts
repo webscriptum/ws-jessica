@@ -42,7 +42,7 @@ export interface ElectronAPI {
   openDeliverables: () => Promise<{ ok: boolean }>
 
   // Agent
-  sendMessage: (convId: string, msg: string) => Promise<{
+  sendMessage: (convId: string, msg: string, voiceMode?: string) => Promise<{
     deliverables: Deliverable[]
     conversationTitle: string
   }>

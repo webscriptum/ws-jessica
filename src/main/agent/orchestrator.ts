@@ -56,6 +56,14 @@ Approccio generale:
 - Offri proattivamente varianti e alternative quando utile
 - Segnala esplicitamente se mancano informazioni necessarie`
 
+const VOICE_CONVERSATION_SYSTEM = `
+MODALITÀ CONVERSAZIONE VOCALE ATTIVA — struttura OGNI risposta così:
+[VOCE]Una o due frasi naturali, come le diresti parlando. Niente markdown, niente elenchi, niente tecnicismi.[/VOCE]
+
+Poi scrivi il testo completo nella chat con tutti i dettagli, markdown, liste, ecc.
+Il contenuto tra [VOCE] e [/VOCE] viene letto ad alta voce appena pronto — DEVE essere breve.
+Se la risposta è già brevissima (una frase), ometti il testo scritto aggiuntivo.`
+
 const TOOLS: Anthropic.Tool[] = [
   {
     name: 'read_source_file',
@@ -265,7 +273,7 @@ export class Orchestrator {
     }
   }
 
-  async sendMessage(userMessage: string): Promise<DeliverableWritten[]> {
+  async sendMessage(userMessage: string, voiceMode?: string): Promise<DeliverableWritten[]> {
     this.cancelled = false
     const deliverables: DeliverableWritten[] = []
 
@@ -273,9 +281,10 @@ export class Orchestrator {
 
     const specialty = detectSpecialty(userMessage)
     const specialistSection = SPECIALIST_PROMPTS[specialty]
+    const voiceSection = voiceMode === 'conversation' ? VOICE_CONVERSATION_SYSTEM : ''
     const activeSystem = specialistSection
-      ? `${this.systemPrompt}\n\n---\n\n${specialistSection}`
-      : this.systemPrompt
+      ? `${this.systemPrompt}\n\n---\n\n${specialistSection}${voiceSection}`
+      : `${this.systemPrompt}${voiceSection}`
 
     // Load OpenAI key fresh at call time so it works even if set after app start
     const openAiKey = loadOpenAiKey()

@@ -38,6 +38,7 @@ export default function ChatWindow({
   const isUserScrolledUpRef = useRef(false)
   const streamingIdRef = useRef<string | null>(null)
   const streamingTextRef = useRef<string>('')
+  const voiceSpokenRef = useRef(false)
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
 
   const scrollToBottom = useCallback((force = false) => {
@@ -92,14 +93,42 @@ export default function ChatWindow({
   useEffect(() => {
     const offToken = window.electronAPI.onToken((token) => {
       streamingTextRef.current += token
+      const fullText = streamingTextRef.current
+
+      // Detect completed [VOCE] block and trigger TTS immediately
+      if (voiceMode === 'conversation' && !voiceSpokenRef.current) {
+        const voiceEnd = fullText.indexOf('[/VOCE]')
+        if (voiceEnd !== -1) {
+          const voiceStart = fullText.indexOf('[VOCE]')
+          if (voiceStart !== -1) {
+            const voiceText = fullText.slice(voiceStart + '[VOCE]'.length, voiceEnd).trim()
+            if (voiceText) {
+              voiceSpokenRef.current = true
+              playTts(voiceText).catch(console.error)
+            }
+          }
+        }
+      }
+
+      // Strip [VOCE]...[/VOCE] block from display text
+      let displayText: string
+      const voiceEndIdx = fullText.indexOf('[/VOCE]')
+      if (voiceEndIdx !== -1) {
+        displayText = fullText.slice(voiceEndIdx + '[/VOCE]'.length).replace(/^\n+/, '')
+      } else if (fullText.includes('[VOCE]')) {
+        displayText = '' // VOCE block still forming, hide it
+      } else {
+        displayText = fullText
+      }
+
       setMessages((prev) => {
         if (!streamingIdRef.current) {
           const id = uid()
           streamingIdRef.current = id
-          return [...prev, { id, role: 'assistant', content: token, isStreaming: true }]
+          return [...prev, { id, role: 'assistant', content: displayText, isStreaming: true }]
         }
         return prev.map((m) =>
-          m.id === streamingIdRef.current ? { ...m, content: m.content + token } : m
+          m.id === streamingIdRef.current ? { ...m, content: displayText } : m
         )
       })
     })
@@ -111,12 +140,15 @@ export default function ChatWindow({
         )
       )
       const text = streamingTextRef.current
+      const wasVoiceSpoken = voiceSpokenRef.current
       streamingTextRef.current = ''
       streamingIdRef.current = null
+      voiceSpokenRef.current = false
       setIsRunning(false)
       onConversationUpdate()
 
-      if (voiceMode === 'conversation' && text) {
+      // Fallback TTS only if Jessica non ha usato il blocco [VOCE]
+      if (voiceMode === 'conversation' && text && !wasVoiceSpoken) {
         playTts(text).catch(console.error)
       }
     })
@@ -157,11 +189,12 @@ export default function ChatWindow({
     setInput('')
     setIsRunning(true)
     isUserScrolledUpRef.current = false
+    voiceSpokenRef.current = false
     streamingIdRef.current = null
     streamingTextRef.current = ''
     setMessages((prev) => [...prev, { id: uid(), role: 'user', content: text }])
-    window.electronAPI.sendMessage(conversationId, text)
-  }, [conversationId, isRunning, stopTts])
+    window.electronAPI.sendMessage(conversationId, text, voiceMode)
+  }, [conversationId, isRunning, stopTts, voiceMode])
 
   const handleSend = (): void => sendText(input)
 

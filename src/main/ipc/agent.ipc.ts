@@ -225,7 +225,8 @@ export function registerAgentIpc(win: BrowserWindow): void {
     async (
       _e,
       convId: string,
-      userMessage: string
+      userMessage: string,
+      voiceMode?: string
     ): Promise<{ deliverables: { filename: string; path: string }[]; conversationTitle: string }> => {
       const conv = await getConversation(convId)
       if (!conv) {
@@ -245,7 +246,7 @@ export function registerAgentIpc(win: BrowserWindow): void {
       }
 
       try {
-        const deliverables = await agent.sendMessage(userMessage)
+        const deliverables = await agent.sendMessage(userMessage, voiceMode)
         const assistantText = agent.getLastAssistantText()
 
         const savedConv = await getConversation(convId)

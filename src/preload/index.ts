@@ -14,7 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openDeliverables: () => ipcRenderer.invoke('files:open-deliverables'),
 
   // Agent
-  sendMessage: (convId: string, msg: string) => ipcRenderer.invoke('agent:message', convId, msg),
+  sendMessage: (convId: string, msg: string, voiceMode?: string) =>
+    ipcRenderer.invoke('agent:message', convId, msg, voiceMode),
   cancelAgent: (convId: string) => ipcRenderer.invoke('agent:cancel', convId),
 
   // Agent events
