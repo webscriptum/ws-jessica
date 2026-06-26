@@ -9,9 +9,11 @@ import { writePdf } from './tools/write-pdf'
 import { writePresentation } from './tools/write-presentation'
 import { generateImage } from './tools/generate-image'
 import { detectSpecialty, SPECIALIST_PROMPTS } from './specialists'
+import { loadOpenAiKey } from '../storage/secure-storage'
 import type { DeliverableWritten } from '../../shared/types'
 
 const MODEL = 'claude-opus-4-8'
+const RATE_LIMIT_WAIT_MS = 65_000
 
 const BASE_SYSTEM_PROMPT = `Sei Jessica, l'assistente AI di Webscriptum — un'agenzia creativa italiana.
 
@@ -54,7 +56,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        filename: { type: 'string', description: 'Nome file con estensione .md (es. "brand-brief.md")' },
+        filename: { type: 'string', description: 'Nome file con estensione .md' },
         content: { type: 'string', description: 'Contenuto markdown completo' }
       },
       required: ['filename', 'content']
@@ -62,35 +64,35 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'write_word',
-    description: 'Salva un deliverable come documento Word (.docx). Usalo per documenti professionali da condividere con il team o il cliente.',
+    description: 'Salva un deliverable come documento Word (.docx). Per documenti professionali da condividere con il team o il cliente.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        filename: { type: 'string', description: 'Nome file con estensione .docx (es. "brand-brief.docx")' },
-        content: { type: 'string', description: 'Contenuto in formato markdown — verrà convertito in Word con stili appropriati' }
+        filename: { type: 'string', description: 'Nome file con estensione .docx' },
+        content: { type: 'string', description: 'Contenuto in formato markdown' }
       },
       required: ['filename', 'content']
     }
   },
   {
     name: 'write_pdf',
-    description: 'Salva un deliverable come PDF impaginato (.pdf). Usalo per brand book, style guide e documenti graficamente curati da consegnare al cliente.',
+    description: 'Salva un deliverable come PDF impaginato con grafica Webscriptum (.pdf). Per brand book, style guide e documenti da consegnare al cliente.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        filename: { type: 'string', description: 'Nome file con estensione .pdf (es. "brand-book.pdf")' },
-        content: { type: 'string', description: 'Contenuto in formato markdown — verrà impaginato con template grafico Webscriptum' }
+        filename: { type: 'string', description: 'Nome file con estensione .pdf' },
+        content: { type: 'string', description: 'Contenuto in formato markdown' }
       },
       required: ['filename', 'content']
     }
   },
   {
     name: 'write_presentation',
-    description: 'Salva una presentazione PowerPoint (.pptx). Usalo per pitch deck, brand presentation e slide da mostrare al cliente. Usa --- per separare le slide.',
+    description: 'Salva una presentazione PowerPoint (.pptx). Per pitch deck, brand presentation e slide da mostrare al cliente. Usa --- per separare le slide.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        filename: { type: 'string', description: 'Nome file con estensione .pptx (es. "brand-presentation.pptx")' },
+        filename: { type: 'string', description: 'Nome file con estensione .pptx' },
         content: { type: 'string', description: 'Slide in markdown: # titolo, ## sottotitolo, - bullet, --- separa le slide.' }
       },
       required: ['filename', 'content']
@@ -98,12 +100,12 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'generate_image',
-    description: 'Genera un\'immagine PNG con DALL-E 3 e la salva nella cartella output. Usala per moodboard, concept visivi, ispirazioni grafiche, stili fotografici, palette colori visive.',
+    description: 'Genera un\'immagine PNG con DALL-E 3 e la salva nella cartella output. Per moodboard, concept visivi, ispirazioni grafiche, stili fotografici.',
     input_schema: {
       type: 'object' as const,
       properties: {
         filename: { type: 'string', description: 'Nome file senza estensione (es. "moodboard-brand")' },
-        prompt: { type: 'string', description: 'Prompt dettagliato in inglese per DALL-E 3. Più è specifico, migliore è il risultato.' }
+        prompt: { type: 'string', description: 'Prompt dettagliato in inglese per DALL-E 3.' }
       },
       required: ['filename', 'prompt']
     }
@@ -119,7 +121,6 @@ export class Orchestrator {
 
   constructor(
     private apiKey: string,
-    private openAiKey: string | null,
     private convTitle: string,
     private sourceFiles: string[],
     contextSummary: string | null,
@@ -127,7 +128,7 @@ export class Orchestrator {
     private onOutputFolderPicked: (folder: string) => void,
     private mainWindow: BrowserWindow
   ) {
-    this.client = new Anthropic({ apiKey: this.apiKey })
+    this.client = new Anthropic({ apiKey: this.apiKey, maxRetries: 2 })
     this.outputFolder = outputFolder
     this.systemPrompt = contextSummary
       ? `${BASE_SYSTEM_PROMPT}\n\n---\n\n## CONTESTO CLIENTE\n\n${contextSummary}`
@@ -153,6 +154,45 @@ export class Orchestrator {
     return join(this.outputFolder, today)
   }
 
+  // Streams a single turn, retrying on rate limit
+  private async streamTurn(
+    activeSystem: string,
+    activeTools: Anthropic.Tool[]
+  ): Promise<Anthropic.Message> {
+    let retryCount = 0
+    const MAX_RETRIES = 3
+
+    while (true) {
+      try {
+        const stream = this.client.messages.stream({
+          model: MODEL,
+          max_tokens: 8192,
+          system: activeSystem,
+          messages: this.conversation,
+          tools: activeTools
+        })
+
+        stream.on('text', (text) => {
+          if (!this.cancelled) this.mainWindow.webContents.send('agent:token', text)
+        })
+
+        return await stream.finalMessage()
+      } catch (e) {
+        if (e instanceof Anthropic.RateLimitError && retryCount < MAX_RETRIES && !this.cancelled) {
+          retryCount++
+          const waitSec = Math.round(RATE_LIMIT_WAIT_MS / 1000)
+          this.mainWindow.webContents.send(
+            'agent:token',
+            `\n\n*⏳ Limite richieste raggiunto — riprovo automaticamente tra ${waitSec} secondi (tentativo ${retryCount}/${MAX_RETRIES})…*\n\n`
+          )
+          await new Promise((r) => setTimeout(r, RATE_LIMIT_WAIT_MS))
+          continue
+        }
+        throw e
+      }
+    }
+  }
+
   async sendMessage(userMessage: string): Promise<DeliverableWritten[]> {
     this.cancelled = false
     const deliverables: DeliverableWritten[] = []
@@ -165,25 +205,12 @@ export class Orchestrator {
       ? `${this.systemPrompt}\n\n---\n\n${specialistSection}`
       : this.systemPrompt
 
-    // Only include generate_image tool if OpenAI key is configured
-    const activeTools = this.openAiKey ? TOOLS : TOOLS.filter((t) => t.name !== 'generate_image')
+    // Load OpenAI key fresh at call time so it works even if set after app start
+    const openAiKey = loadOpenAiKey()
+    const activeTools = openAiKey ? TOOLS : TOOLS.filter((t) => t.name !== 'generate_image')
 
     while (!this.cancelled) {
-      const stream = this.client.messages.stream({
-        model: MODEL,
-        max_tokens: 8192,
-        system: activeSystem,
-        messages: this.conversation,
-        tools: activeTools
-      })
-
-      stream.on('text', (text) => {
-        if (!this.cancelled) {
-          this.mainWindow.webContents.send('agent:token', text)
-        }
-      })
-
-      const message = await stream.finalMessage()
+      const message = await this.streamTurn(activeSystem, activeTools)
       this.conversation.push({ role: 'assistant', content: message.content })
 
       if (message.stop_reason === 'end_turn') break
@@ -225,18 +252,20 @@ export class Orchestrator {
               result = `Errore nel salvataggio: ${e instanceof Error ? e.message : String(e)}`
             }
           } else if (toolUse.name === 'generate_image') {
-            if (!this.openAiKey) {
+            const currentKey = loadOpenAiKey()
+            if (!currentKey) {
               result = 'Generazione immagini non disponibile: configura la OpenAI API key nelle Impostazioni.'
             } else {
               try {
                 const outputDir = await this.resolveOutputDir()
-                const img = await generateImage(outputDir, input.filename, input.prompt, this.openAiKey)
+                const img = await generateImage(outputDir, input.filename, input.prompt, currentKey)
                 deliverables.push({ filename: img.filename, path: img.path })
                 result = `Immagine generata e salvata in: ${img.path}`
                 this.mainWindow.webContents.send('agent:deliverable', { filename: img.filename, path: img.path })
                 this.mainWindow.webContents.send('agent:image', { filename: img.filename, base64: img.base64 })
               } catch (e) {
-                result = `Errore generazione immagine: ${e instanceof Error ? e.message : String(e)}`
+                const msg = e instanceof Error ? e.message : String(e)
+                result = `Errore generazione immagine: ${msg}. Controlla che la OpenAI key sia valida e che l'account abbia crediti disponibili.`
               }
             }
           } else {

@@ -1,8 +1,8 @@
 import { ipcMain, dialog, shell, app, BrowserWindow } from 'electron'
 import { basename, join } from 'path'
-import Anthropic from '@anthropic-ai/sdk'
+import Anthropic, { RateLimitError } from '@anthropic-ai/sdk'
 import { extractText } from '../agent/tools/read-source-file'
-import { loadApiKey, loadOpenAiKey } from '../storage/secure-storage'
+import { loadApiKey } from '../storage/secure-storage'
 import { Orchestrator } from '../agent/orchestrator'
 import {
   listConversations,
@@ -45,7 +45,6 @@ function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Orchestrato
   const apiKey = loadApiKey()
   if (!apiKey) return null
   if (!orchestrators.has(conv.id)) {
-    const openAiKey = loadOpenAiKey()
     const onFolderPicked = async (folder: string): Promise<void> => {
       const fresh = await getConversation(conv.id)
       if (fresh) {
@@ -58,7 +57,6 @@ function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Orchestrato
       conv.id,
       new Orchestrator(
         apiKey,
-        openAiKey,
         conv.title,
         conv.sourceFiles,
         conv.contextSummary,
@@ -253,7 +251,12 @@ export function registerAgentIpc(win: BrowserWindow): void {
         win.webContents.send('agent:done', { deliverables })
         return { deliverables, conversationTitle: savedConv?.title ?? conv.title }
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
+        let msg: string
+        if (e instanceof RateLimitError) {
+          msg = 'Limite di richieste API raggiunto. Aspetta un minuto e riprova.'
+        } else {
+          msg = e instanceof Error ? e.message : String(e)
+        }
         win.webContents.send('agent:error', msg)
         return { deliverables: [], conversationTitle: conv.title }
       }
