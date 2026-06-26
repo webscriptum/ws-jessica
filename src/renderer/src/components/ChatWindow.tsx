@@ -34,15 +34,26 @@ export default function ChatWindow({
   const [hasContext, setHasContext] = useState(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('off')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const messagesListRef = useRef<HTMLDivElement>(null)
+  const isUserScrolledUpRef = useRef(false)
   const streamingIdRef = useRef<string | null>(null)
   const streamingTextRef = useRef<string>('')
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((force = false) => {
+    if (!force && isUserScrolledUpRef.current) return
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
 
+  const handleMessagesScroll = useCallback(() => {
+    const el = messagesListRef.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    isUserScrolledUpRef.current = distanceFromBottom > 100
+  }, [])
+
   useEffect(() => {
+    isUserScrolledUpRef.current = false
     window.electronAPI.getConversation(conversationId).then((conv) => {
       if (!conv) return
       setMessages(conv.messages.map((m) => ({ id: m.id, role: m.role, content: m.content })))
@@ -145,6 +156,7 @@ export default function ChatWindow({
     stopTts()
     setInput('')
     setIsRunning(true)
+    isUserScrolledUpRef.current = false
     streamingIdRef.current = null
     streamingTextRef.current = ''
     setMessages((prev) => [...prev, { id: uid(), role: 'user', content: text }])
@@ -200,7 +212,7 @@ export default function ChatWindow({
         </div>
       )}
 
-      <div className="messages-list">
+      <div className="messages-list" ref={messagesListRef} onScroll={handleMessagesScroll}>
         {messages.length === 0 && (
           <div className="empty-state">
             <div className="empty-avatar-ring">
