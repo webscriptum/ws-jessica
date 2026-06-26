@@ -80,6 +80,15 @@ export default function App(): JSX.Element {
     }
   }
 
+  const handleRenameConversation = useCallback(async (id: string, title: string): Promise<void> => {
+    await window.electronAPI.renameConversation(id, title)
+    await refreshConversations()
+    if (activeConv?.id === id) {
+      const updated = await window.electronAPI.getConversation(id)
+      if (updated) setActiveConv(updated)
+    }
+  }, [activeConv, refreshConversations])
+
   const handleConversationUpdate = useCallback(async () => {
     await refreshConversations()
     if (activeConv) {
@@ -96,6 +105,7 @@ export default function App(): JSX.Element {
         onSelect={handleSelectConversation}
         onCreate={handleNewChat}
         onDelete={handleDeleteConversation}
+        onRename={handleRenameConversation}
         onSettings={() => setView('settings')}
       />
       <main className="app-main">

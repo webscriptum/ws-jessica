@@ -32,6 +32,7 @@ export interface ElectronAPI {
   createConversation: () => Promise<Conversation>
   getConversation: (id: string) => Promise<Conversation | null>
   deleteConversation: (id: string) => Promise<{ ok: boolean }>
+  renameConversation: (id: string, title: string) => Promise<{ ok: boolean }>
 
   // File picking & context synthesis
   pickFiles: () => Promise<{ ok: boolean; paths?: string[] }>

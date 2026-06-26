@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createConversation: () => ipcRenderer.invoke('conversations:create'),
   getConversation: (id: string) => ipcRenderer.invoke('conversations:get', id),
   deleteConversation: (id: string) => ipcRenderer.invoke('conversations:delete', id),
+  renameConversation: (id: string, title: string) => ipcRenderer.invoke('conversations:rename', id, title),
 
   // File picking & context synthesis
   pickFiles: () => ipcRenderer.invoke('files:pick'),

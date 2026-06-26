@@ -105,6 +105,15 @@ export function registerAgentIpc(win: BrowserWindow): void {
     return { ok: true }
   })
 
+  ipcMain.handle('conversations:rename', async (_e, id: string, title: string): Promise<{ ok: boolean }> => {
+    const conv = await getConversation(id)
+    if (!conv) return { ok: false }
+    conv.title = title.trim() || conv.title
+    conv.updatedAt = new Date().toISOString()
+    await saveConversation(conv)
+    return { ok: true }
+  })
+
   // ── File picking & synthesis ────────────────────────────────────────────────
 
   ipcMain.handle(

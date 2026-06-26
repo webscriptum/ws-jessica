@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ConversationSummary } from '../../../preload/index.d'
 import JessicaAvatar from './JessicaAvatar'
 
@@ -7,6 +8,7 @@ interface Props {
   onSelect: (id: string) => void
   onCreate: () => void
   onDelete: (id: string) => void
+  onRename: (id: string, title: string) => void
   onSettings: () => void
 }
 
@@ -27,8 +29,24 @@ export default function Sidebar({
   onSelect,
   onCreate,
   onDelete,
+  onRename,
   onSettings
 }: Props): JSX.Element {
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
+
+  const startEdit = (e: React.MouseEvent, conv: ConversationSummary): void => {
+    e.stopPropagation()
+    setEditingId(conv.id)
+    setEditingTitle(conv.title === 'Nuova chat' ? '' : conv.title)
+  }
+
+  const saveEdit = (id: string): void => {
+    const trimmed = editingTitle.trim()
+    if (trimmed) onRename(id, trimmed)
+    setEditingId(null)
+  }
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -50,11 +68,29 @@ export default function Sidebar({
           <div
             key={conv.id}
             className={`sidebar-item ${conv.id === activeId ? 'active' : ''}`}
-            onClick={() => onSelect(conv.id)}
+            onClick={() => editingId !== conv.id && onSelect(conv.id)}
           >
             <div className="sidebar-item-main">
-              <span className="sidebar-item-title">{conv.title}</span>
-              <span className="sidebar-item-date">{formatDate(conv.updatedAt)}</span>
+              {editingId === conv.id ? (
+                <input
+                  className="sidebar-item-title-input"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  onBlur={() => saveEdit(conv.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveEdit(conv.id)
+                    if (e.key === 'Escape') setEditingId(null)
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  autoFocus
+                  placeholder="Nome progetto…"
+                />
+              ) : (
+                <>
+                  <span className="sidebar-item-title">{conv.title}</span>
+                  <span className="sidebar-item-date">{formatDate(conv.updatedAt)}</span>
+                </>
+              )}
             </div>
             {conv.contextSummary ? (
               <div className="sidebar-item-folder">● Contesto attivo</div>
@@ -63,6 +99,13 @@ export default function Sidebar({
                 {conv.sourceFiles.length} {conv.sourceFiles.length === 1 ? 'file' : 'file'}
               </div>
             ) : null}
+            <button
+              className="sidebar-item-edit"
+              title="Rinomina progetto"
+              onClick={(e) => startEdit(e, conv)}
+            >
+              ✎
+            </button>
             <button
               className="sidebar-item-delete"
               title="Elimina chat"
