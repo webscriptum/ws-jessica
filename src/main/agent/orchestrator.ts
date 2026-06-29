@@ -9,6 +9,7 @@ import { writeWord } from './tools/write-word'
 import { writePdf } from './tools/write-pdf'
 import { writePresentation } from './tools/write-presentation'
 import { writeExcel } from './tools/write-excel'
+import { fetchUrl } from './tools/fetch-url'
 import { generateImage } from './tools/generate-image'
 import { detectSpecialty, SPECIALIST_PROMPTS } from './specialists'
 import { loadOpenAiKey } from '../storage/secure-storage'
@@ -26,6 +27,7 @@ Regole operative:
 - Usa sempre l'italiano salvo richiesta diversa
 - Rispondi in modo conversazionale e professionale, come farebbe una collega senior
 - Quando hai bisogno di ricontrollare un dettaglio specifico dai materiali originali, usa read_source_file
+- Quando l'utente fornisce o menziona un URL di un sito web, usa fetch_url per analizzarne il contenuto prima di fare raccomandazioni
 - Quando l'utente chiede di modificare o aggiornare un file già prodotto (HTML, testo, CSV…), usa read_output_file per leggerlo, poi riscrivi la versione aggiornata con il tool appropriato (verrà salvata come -v2 automaticamente)
 - Quando produci un deliverable completo, scegli il formato più adatto e salva con il tool corretto
 
@@ -264,6 +266,25 @@ POST GRAFICO SOCIAL — usa dimensioni fisse (apribile nel browser, screenshotta
     }
   },
   {
+    name: 'fetch_url',
+    description: `Scarica e analizza il contenuto di una pagina web pubblica. Restituisce:
+- Title e meta description (con valutazione lunghezza SEO)
+- Canonical URL e robots meta
+- Struttura heading H1/H2/H3 completa
+- Conteggio parole e immagini senza alt text
+- Testo estratto dalla pagina (~4000 caratteri)
+
+Usa per: audit SEO del sito del cliente, analisi competitor da URL, brand audit da sito web, lettura di brief/specifiche pubblicate online.
+Limitazione: funziona su siti HTML statici. Per SPA React/Vue potrebbe restituire contenuto limitato (JavaScript non eseguito).`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        url: { type: 'string', description: 'URL completo della pagina da analizzare (es. "https://www.esempio.com/chi-siamo")' }
+      },
+      required: ['url']
+    }
+  },
+  {
     name: 'generate_image',
     description: 'Genera una singola immagine PNG con DALL-E 3. Da usare SOLO per illustrazioni AI singole, render fotorealistici o icone. NON per moodboard (usa write_html con layout CSS).',
     input_schema: {
@@ -447,6 +468,13 @@ export class Orchestrator {
               }
             } catch (e) {
               result = `File non trovato nella cartella output: ${input.filename}`
+            }
+          } else if (toolUse.name === 'fetch_url') {
+            this.sendStatus(`🌐 Lettura pagina: ${input.url}`)
+            try {
+              result = await fetchUrl(input.url)
+            } catch (e) {
+              result = `Impossibile raggiungere ${input.url}: ${e instanceof Error ? e.message : String(e)}`
             }
           } else if (
             toolUse.name === 'write_deliverable' ||
