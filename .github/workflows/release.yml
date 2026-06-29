@@ -1,4 +1,4 @@
-name: Build & Release
+name: Release
 
 on:
   push:
@@ -6,52 +6,20 @@ on:
       - 'v*'
 
 jobs:
-  build:
-    permissions:
-      contents: write
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            platform: mac
-          - os: windows-latest
-            platform: win
-
+  release-windows:
+    runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build (Mac)
-        if: matrix.platform == 'mac'
+      - name: Build and publish
+        run: npx electron-vite build && npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build && npx electron-builder --mac --publish always
-
-      - name: Build (Windows)
-        if: matrix.platform == 'win'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build && npx electron-builder --win --publish always
-
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Publish release (remove draft)
-        run: gh release edit ${{ github.ref_name }} --draft=false --latest
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
