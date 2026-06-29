@@ -13,11 +13,6 @@ interface Props {
   showSettings: boolean
 }
 
-const AVATAR_HEIGHTS: Record<MascotAvatarSize, number> = {
-  small:  240,
-  medium: 300,
-  large:  360
-}
 
 export default function MascotLayout({
   activeConv,
@@ -28,8 +23,8 @@ export default function MascotLayout({
   showSettings
 }: Props): JSX.Element {
   const [isRunning, setIsRunning] = useState(false)
-  const [panelBottom, setPanelBottom] = useState(() => AVATAR_HEIGHTS[avatarSize] + 12)
-  const dragRef = useRef<{ startY: number; startBottom: number } | null>(null)
+  const [panelPos, setPanelPos] = useState({ top: 20, left: 10 })
+  const dragRef = useRef<{ startX: number; startY: number; startTop: number; startLeft: number } | null>(null)
 
   const handleRunningChange = useCallback((running: boolean): void => {
     setIsRunning(running)
@@ -37,14 +32,21 @@ export default function MascotLayout({
 
   const onDragHandleDown = (e: React.MouseEvent): void => {
     e.preventDefault()
-    dragRef.current = { startY: e.clientY, startBottom: panelBottom }
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startTop: panelPos.top,
+      startLeft: panelPos.left
+    }
 
     const onMove = (ev: MouseEvent): void => {
       if (!dragRef.current) return
-      const delta = dragRef.current.startY - ev.clientY
-      const minBottom = AVATAR_HEIGHTS[avatarSize] + 12
-      const maxBottom = window.innerHeight - 120
-      setPanelBottom(Math.max(minBottom, Math.min(maxBottom, dragRef.current.startBottom + delta)))
+      const dx = ev.clientX - dragRef.current.startX
+      const dy = ev.clientY - dragRef.current.startY
+      setPanelPos({
+        top: Math.max(0, Math.min(window.innerHeight - 100, dragRef.current.startTop + dy)),
+        left: Math.max(0, Math.min(window.innerWidth - 360, dragRef.current.startLeft + dx))
+      })
     }
 
     const onUp = (): void => {
@@ -71,7 +73,7 @@ export default function MascotLayout({
       {/* Chat panel floating glass */}
       <div
         className="mascot-float-panel"
-        style={{ bottom: panelBottom }}
+        style={{ top: panelPos.top, left: panelPos.left }}
       >
         <div className="mascot-float-handle" onMouseDown={onDragHandleDown}>
           <span className="mascot-title">WS Jessica</span>

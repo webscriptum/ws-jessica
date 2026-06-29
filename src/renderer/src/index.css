@@ -1374,6 +1374,11 @@ button.asset-section-title:hover {
 
 /* ─── Mascot layout ─── */
 
+/* Mascot window: override body background for full transparency */
+body.is-mascot {
+  background: transparent !important;
+}
+
 .mascot-root {
   position: relative;
   width: 100vw;
@@ -1411,21 +1416,22 @@ button.asset-section-title:hover {
   background: var(--accent-dim);
 }
 
-/* Chat panel floating glass */
+/* Chat panel — freely draggable glass card */
 .mascot-float-panel {
   position: absolute;
-  left: 0;
-  right: 0;
-  max-height: 72vh;
-  min-height: 240px;
+  width: 360px;
+  min-height: 320px;
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
-  background: rgba(12, 22, 20, 0.82);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  background: rgba(8, 18, 16, 0.78);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(68, 184, 173, 0.18);
-  border-radius: 16px 16px 0 0;
-  box-shadow: 0 -4px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(68, 184, 173, 0.08);
+  border-radius: 16px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(68, 184, 173, 0.12);
   overflow: hidden;
   z-index: 10;
 }
