@@ -1,5 +1,26 @@
 export type VoiceMode = 'off' | 'voice-to-text' | 'conversation'
 
+export interface ClientBrand {
+  primaryColor?: string
+  accentColor?: string
+  lightColor?: string
+  fonts?: string[]
+  toneOfVoice?: string
+  tagline?: string
+  targetAudience?: string
+  keyMessages?: string[]
+}
+
+export interface ClientProfile {
+  id: string
+  name: string
+  updatedAt: string
+  website?: string
+  sector?: string
+  brand: ClientBrand
+  notes?: string
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -13,6 +34,7 @@ export interface Message {
 export interface Conversation {
   id: string
   title: string
+  clientId?: string
   sourceFiles: string[]
   sourceUrls: string[]
   contextSummary: string | null
@@ -25,6 +47,7 @@ export interface Conversation {
 export interface ConversationSummary {
   id: string
   title: string
+  clientId?: string
   sourceFiles: string[]
   sourceUrls: string[]
   contextSummary: string | null

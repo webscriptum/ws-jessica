@@ -12,6 +12,7 @@ import {
   saveConversation,
   deleteConversation
 } from '../storage/conversations'
+import { getClient } from '../storage/clients'
 import type { Conversation, ConversationSummary } from '../../shared/types'
 
 const orchestrators = new Map<string, Orchestrator>()
@@ -45,7 +46,7 @@ function deriveTitle(conv: Conversation): string {
   return 'Nuova chat'
 }
 
-function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Orchestrator | null {
+async function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Promise<Orchestrator | null> {
   const apiKey = loadApiKey()
   if (!apiKey) return null
   if (!orchestrators.has(conv.id)) {
@@ -58,6 +59,7 @@ function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Orchestrato
       }
     }
     const { modelMode } = loadAppSettings()
+    const clientProfile = conv.clientId ? await getClient(conv.clientId) : null
     orchestrators.set(
       conv.id,
       new Orchestrator(
@@ -68,7 +70,8 @@ function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Orchestrato
         conv.outputFolder,
         onFolderPicked,
         win,
-        modelMode
+        modelMode,
+        clientProfile
       )
     )
   }
@@ -223,6 +226,16 @@ export function registerAgentIpc(win: BrowserWindow): void {
     return { ok: true }
   })
 
+  ipcMain.handle('conversations:setClient', async (_e, convId: string, clientId: string | null): Promise<{ ok: boolean }> => {
+    const conv = await getConversation(convId)
+    if (!conv) return { ok: false }
+    conv.clientId = clientId ?? undefined
+    conv.updatedAt = new Date().toISOString()
+    await saveConversation(conv)
+    orchestrators.delete(convId)
+    return { ok: true }
+  })
+
   // ── File & URL context management ──────────────────────────────────────────
 
   ipcMain.handle(
@@ -232,7 +245,7 @@ export function registerAgentIpc(win: BrowserWindow): void {
         properties: ['openFile', 'multiSelections'],
         title: 'Aggiungi file contesto',
         filters: [
-          { name: 'Documenti', extensions: ['md', 'txt', 'pdf', 'docx', 'doc', 'rtf', 'csv', 'json'] },
+          { name: 'Documenti e immagini', extensions: ['md', 'txt', 'pdf', 'docx', 'doc', 'rtf', 'csv', 'json', 'png', 'jpg', 'jpeg', 'webp', 'gif'] },
           { name: 'Tutti i file', extensions: ['*'] }
         ]
       })
@@ -451,7 +464,7 @@ export function registerAgentIpc(win: BrowserWindow): void {
         return { deliverables: [], conversationTitle: conv.title }
       }
 
-      const agent = ensureOrchestrator(conv, win)
+      const agent = await ensureOrchestrator(conv, win)
       if (!agent) {
         win.webContents.send('agent:error', "Impossibile avviare l'agente.")
         return { deliverables: [], conversationTitle: conv.title }

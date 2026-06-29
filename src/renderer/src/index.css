@@ -591,6 +591,54 @@ button.asset-section-title:hover {
   color: var(--accent);
 }
 
+/* ─── Client selector ─── */
+
+.asset-client-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.asset-client-select {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(68, 184, 173, 0.2);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+  appearance: auto;
+}
+
+.asset-client-select:focus {
+  border-color: var(--accent);
+}
+
+.asset-client-swatches {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+
+.asset-client-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
+}
+
+.asset-client-font {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  margin-left: 2px;
+}
+
 /* ─── Disk files list ─── */
 
 .asset-disk-files {

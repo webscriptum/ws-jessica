@@ -3,7 +3,7 @@ import { dialog, app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { readFile } from 'fs/promises'
 import { join, extname } from 'path'
-import { readSourceFile } from './tools/read-source-file'
+import { readSourceFileResult } from './tools/read-source-file'
 import { writeDeliverable } from './tools/write-deliverable'
 import { writeWord } from './tools/write-word'
 import { writePdf } from './tools/write-pdf'
@@ -13,7 +13,8 @@ import { fetchUrl } from './tools/fetch-url'
 import { generateImage } from './tools/generate-image'
 import { detectSpecialty, SPECIALIST_PROMPTS } from './specialists'
 import { loadOpenAiKey } from '../storage/secure-storage'
-import type { DeliverableWritten } from '../../shared/types'
+import { updateClientField } from '../storage/clients'
+import type { DeliverableWritten, ClientProfile } from '../../shared/types'
 
 const MODEL_SONNET = 'claude-sonnet-4-6'
 const MODEL_OPUS = 'claude-opus-4-8'
@@ -65,7 +66,19 @@ Design adattivo per documenti grafici (PDF, HTML, PPTX):
 Approccio generale:
 - Se una richiesta è ambigua, fai al massimo due domande di chiarimento prima di procedere
 - Offri proattivamente varianti e alternative quando utile
-- Segnala esplicitamente se mancano informazioni necessarie`
+- Segnala esplicitamente se mancano informazioni necessarie
+
+Auto-revisione — dopo aver prodotto un deliverable importante (PDF, PPTX, XLSX):
+1. Usa read_output_file per rileggere il file appena creato
+2. Verifica: i colori corrispondono al brand? la struttura è completa? ci sono sezioni mancanti o errori evidenti?
+3. Se trovi problemi significativi, produci autonomamente una versione corretta (verrà salvata come -v2 automaticamente)
+4. Segnala all'utente solo se hai fatto correzioni, specificando cosa hai migliorato
+
+Playbook multi-step — quando l'utente chiede un'attività "completa" o un intero pacchetto, esegui proattivamente una sequenza di deliverable correlati senza aspettare conferma tra uno e l'altro:
+- "Onboarding nuovo cliente" → fetch_url del sito + competitive-landscape.pdf + moodboard.html + brand-brief.md
+- "Brand strategy completa" → brand-platform.pdf + tone-of-voice.md + moodboard.html + pitch-deck.pptx
+- "Piano marketing completo" → media-plan.xlsx + content-calendar.xlsx + adv-brief.pdf
+- Per ogni sequenza: avverti l'utente in anticipo quali file produrrai, poi eseguili in ordine senza interruzioni`
 
 const VOICE_CONVERSATION_SYSTEM = `
 MODALITÀ CONVERSAZIONE VOCALE ATTIVA — struttura OGNI risposta così:
@@ -79,7 +92,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: 'read_source_file',
     description:
-      'Rileggi un file sorgente originale del cliente per recuperare dettagli specifici o citazioni precise. Usalo solo quando il contesto sintetizzato non è sufficiente.',
+      'Rileggi un file sorgente originale del cliente. Funziona per testo (PDF, DOCX, MD, TXT) e per immagini (PNG, JPG, WEBP). Per le immagini, analizza visivamente colori, stile, tipografia e brand identity — poi usa save_client_info per salvare i dati estratti nel profilo cliente.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -285,6 +298,42 @@ Limitazione: funziona su siti HTML statici. Per SPA React/Vue potrebbe restituir
     }
   },
   {
+    name: 'save_client_info',
+    description: `Salva o aggiorna un campo del profilo permanente del cliente associato a questa conversazione. Le informazioni vengono conservate per TUTTE le future conversazioni con questo cliente — non è necessario riformare il brief ogni volta.
+
+Usa questo tool ogni volta che apprendi informazioni rilevanti sul brand: colori, font, tono di voce, target, messaggi chiave, settore, note operative.
+Usa in particolare all'inizio di una conversazione quando analizzi un brief cliente: estrai e salva tutte le info brand disponibili.
+
+Campi disponibili:
+- primaryColor → colore primario brand (hex, es. "#FF5A00")
+- accentColor → colore secondario/accent (hex)
+- lightColor → colore chiaro/sfondo brand (hex)
+- fonts → font del brand (es. "Montserrat, Open Sans")
+- toneOfVoice → tono di voce brand (es. "Professionale, diretto, innovativo")
+- tagline → tagline o claim del brand
+- targetAudience → descrizione del target
+- keyMessages → messaggi chiave separati da virgola
+- website → sito web principale
+- sector → settore di riferimento
+- name → nome del cliente (aggiornalo se necessario)
+- notes → note operative per il team (es. "preferisce italiano", "evitare linguaggio tecnico")`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        field: {
+          type: 'string',
+          enum: ['primaryColor', 'accentColor', 'lightColor', 'fonts', 'toneOfVoice', 'tagline', 'targetAudience', 'keyMessages', 'website', 'sector', 'name', 'notes'],
+          description: 'Campo del profilo da aggiornare'
+        },
+        value: {
+          type: 'string',
+          description: 'Valore da salvare (per campi array come fonts e keyMessages: valori separati da virgola)'
+        }
+      },
+      required: ['field', 'value']
+    }
+  },
+  {
     name: 'generate_image',
     description: 'Genera una singola immagine PNG con DALL-E 3. Da usare SOLO per illustrazioni AI singole, render fotorealistici o icone. NON per moodboard (usa write_html con layout CSS).',
     input_schema: {
@@ -298,6 +347,40 @@ Limitazione: funziona su siti HTML statici. Per SPA React/Vue potrebbe restituir
   }
 ]
 
+function buildClientProfileSection(p: ClientProfile): string {
+  const b = p.brand
+  const colorLine = [
+    b.primaryColor ? `primary ${b.primaryColor}` : '',
+    b.accentColor ? `accent ${b.accentColor}` : '',
+    b.lightColor ? `light ${b.lightColor}` : ''
+  ].filter(Boolean).join(' | ')
+
+  const tema = [b.primaryColor, b.accentColor, b.lightColor].filter(Boolean).join(',')
+
+  const lines = [`## PROFILO CLIENTE: ${p.name}`]
+  if (p.sector) lines.push(`Settore: ${p.sector}`)
+  if (p.website) lines.push(`Sito: ${p.website}`)
+  if (colorLine) lines.push(`Colori brand: ${colorLine}`)
+  if (b.fonts?.length) lines.push(`Font: ${b.fonts.join(', ')}`)
+  if (b.toneOfVoice) lines.push(`Tone of voice: ${b.toneOfVoice}`)
+  if (b.tagline) lines.push(`Tagline: "${b.tagline}"`)
+  if (b.targetAudience) lines.push(`Target: ${b.targetAudience}`)
+  if (b.keyMessages?.length) lines.push(`Messaggi chiave: ${b.keyMessages.join(' • ')}`)
+  if (p.notes) lines.push(`Note operative: ${p.notes}`)
+
+  if (tema) {
+    lines.push('')
+    lines.push(`⚡ Usa SEMPRE [TEMA:${tema}] per tutti i deliverable visivi di questo cliente.`)
+    lines.push(`   Non chiedere i colori — li hai già. Non usare i colori Webscriptum.`)
+  }
+  if (!colorLine) {
+    lines.push('')
+    lines.push(`⚡ Colori brand non ancora registrati. Quando li apprendi, salva con save_client_info.`)
+  }
+
+  return lines.join('\n')
+}
+
 export class Orchestrator {
   private client: Anthropic
   private conversation: Anthropic.MessageParam[] = []
@@ -305,6 +388,7 @@ export class Orchestrator {
   private systemPrompt: string
   private outputFolder: string | null
   private model: string
+  private clientId: string | null
 
   constructor(
     private apiKey: string,
@@ -314,14 +398,21 @@ export class Orchestrator {
     outputFolder: string | null,
     private onOutputFolderPicked: (folder: string) => void,
     private mainWindow: BrowserWindow,
-    modelMode: 'sonnet' | 'opus' = 'sonnet'
+    modelMode: 'sonnet' | 'opus' = 'sonnet',
+    clientProfile: ClientProfile | null = null
   ) {
     this.client = new Anthropic({ apiKey: this.apiKey, maxRetries: 2 })
     this.outputFolder = outputFolder
     this.model = modelMode === 'opus' ? MODEL_OPUS : MODEL_SONNET
+    this.clientId = clientProfile?.id ?? null
+
+    let base = BASE_SYSTEM_PROMPT
+    if (clientProfile) {
+      base = `${base}\n\n---\n\n${buildClientProfileSection(clientProfile)}`
+    }
     this.systemPrompt = contextSummary
-      ? `${BASE_SYSTEM_PROMPT}\n\n---\n\n## CONTESTO CLIENTE\n\n${contextSummary}`
-      : BASE_SYSTEM_PROMPT
+      ? `${base}\n\n---\n\n## CONTESTO CLIENTE\n\n${contextSummary}`
+      : base
   }
 
   updateOutputFolder(folder: string): void {
@@ -449,11 +540,26 @@ export class Orchestrator {
           }
 
           const input = toolUse.input as Record<string, string>
-          let result: string
+          let result: string = ''
+          let imageContent: (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[] | null = null
 
           if (toolUse.name === 'read_source_file') {
             this.sendStatus(`📖 Lettura file sorgente: ${input.filename}`)
-            result = await readSourceFile(this.sourceFiles, input.filename)
+            const fileResult = await readSourceFileResult(this.sourceFiles, input.filename)
+            if (fileResult.kind === 'image') {
+              imageContent = [
+                {
+                  type: 'image' as const,
+                  source: { type: 'base64' as const, media_type: fileResult.mediaType, data: fileResult.base64 }
+                },
+                {
+                  type: 'text' as const,
+                  text: `Immagine "${fileResult.name}" caricata. Analizza: colori dominanti (fornisci HEX approssimati), stile grafico (minimal/bold/luxury/corporate), tipografia (serif/sans-serif, peso visivo), mood e uso previsto (logo, illustrazione, foto, moodboard reference). Se trovi chiari colori brand HEX, salvali subito con save_client_info.`
+                }
+              ]
+            } else {
+              result = fileResult.content
+            }
           } else if (toolUse.name === 'read_output_file') {
             this.sendStatus(`📂 Lettura output: ${input.filename}`)
             try {
@@ -506,6 +612,21 @@ export class Orchestrator {
             } catch (e) {
               result = `Errore nel salvataggio: ${e instanceof Error ? e.message : String(e)}`
             }
+          } else if (toolUse.name === 'save_client_info') {
+            if (!this.clientId) {
+              result = 'Nessun cliente associato a questa conversazione. Associa un cliente dall\'AssetPanel prima di salvare informazioni brand.'
+            } else {
+              try {
+                const updated = await updateClientField(this.clientId, input.field, input.value)
+                if (updated) {
+                  result = `Profilo cliente aggiornato: ${input.field} = "${input.value}". Le informazioni sono salvate per tutte le future conversazioni con ${updated.name}.`
+                } else {
+                  result = `Cliente non trovato (id: ${this.clientId}).`
+                }
+              } catch (e) {
+                result = `Errore salvataggio profilo: ${e instanceof Error ? e.message : String(e)}`
+              }
+            }
           } else if (toolUse.name === 'generate_image') {
             this.sendStatus(`🎨 Generazione immagine: ${input.filename}`)
             const currentKey = loadOpenAiKey()
@@ -529,7 +650,7 @@ export class Orchestrator {
           }
 
           this.mainWindow.webContents.send('agent:status', null) // clear after each tool
-          toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: result })
+          toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: imageContent ?? result })
         }
 
         this.conversation.push({ role: 'user', content: toolResults })

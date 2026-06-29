@@ -1,6 +1,27 @@
 export type VoiceMode = 'off' | 'voice-to-text' | 'conversation'
 export type ModelMode = 'sonnet' | 'opus'
 
+export interface ClientBrand {
+  primaryColor?: string
+  accentColor?: string
+  lightColor?: string
+  fonts?: string[]
+  toneOfVoice?: string
+  tagline?: string
+  targetAudience?: string
+  keyMessages?: string[]
+}
+
+export interface ClientProfile {
+  id: string
+  name: string
+  updatedAt: string
+  website?: string
+  sector?: string
+  brand: ClientBrand
+  notes?: string
+}
+
 export interface Deliverable {
   filename: string
   path: string
@@ -20,6 +41,7 @@ export interface ConversationSummary {
 export interface Conversation {
   id: string
   title: string
+  clientId?: string
   sourceFiles: string[]
   sourceUrls: string[]
   contextSummary: string | null
@@ -36,6 +58,13 @@ export interface ElectronAPI {
   getConversation: (id: string) => Promise<Conversation | null>
   deleteConversation: (id: string) => Promise<{ ok: boolean }>
   renameConversation: (id: string, title: string) => Promise<{ ok: boolean }>
+  setConversationClient: (convId: string, clientId: string | null) => Promise<{ ok: boolean }>
+
+  // Clients
+  listClients: () => Promise<ClientProfile[]>
+  getClient: (id: string) => Promise<ClientProfile | null>
+  saveClient: (profile: ClientProfile) => Promise<{ ok: boolean }>
+  deleteClient: (id: string) => Promise<{ ok: boolean }>
 
   // File & URL context management
   addFiles: (convId: string) => Promise<{ ok: boolean; sourceFiles?: string[]; contextSummary?: string | null; error?: string }>

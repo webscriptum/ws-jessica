@@ -35,6 +35,7 @@ export default function ChatWindow({
   const [sourceUrls, setSourceUrls] = useState<string[]>([])
   const [contextSummary, setContextSummary] = useState<string | null>(null)
   const [outputFolder, setOutputFolder] = useState<string | null>(null)
+  const [clientId, setClientId] = useState<string | undefined>(undefined)
   const [hasContext, setHasContext] = useState(false)
   const [onboardingDone, setOnboardingDone] = useState(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('off')
@@ -72,6 +73,7 @@ export default function ChatWindow({
       setSourceUrls(conv.sourceUrls ?? [])
       setContextSummary(conv.contextSummary)
       setOutputFolder(conv.outputFolder)
+      setClientId(conv.clientId)
       setHasContext(!!conv.contextSummary)
       // Mark onboarding done for existing conversations with messages
       if (conv.messages.length > 0) setOnboardingDone(true)
@@ -359,12 +361,14 @@ export default function ChatWindow({
 
       <AssetPanel
         convId={conversationId}
+        clientId={clientId}
         sourceFiles={sourceFiles}
         sourceUrls={sourceUrls}
         contextSummary={contextSummary}
         outputFolder={outputFolder}
         deliverables={deliverables}
         onContextUpdated={handleContextUpdated}
+        onClientChanged={(id) => setClientId(id ?? undefined)}
       />
     </div>
   )

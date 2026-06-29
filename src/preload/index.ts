@@ -7,6 +7,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConversation: (id: string) => ipcRenderer.invoke('conversations:get', id),
   deleteConversation: (id: string) => ipcRenderer.invoke('conversations:delete', id),
   renameConversation: (id: string, title: string) => ipcRenderer.invoke('conversations:rename', id, title),
+  setConversationClient: (convId: string, clientId: string | null) => ipcRenderer.invoke('conversations:setClient', convId, clientId),
+
+  // Clients
+  listClients: () => ipcRenderer.invoke('clients:list'),
+  getClient: (id: string) => ipcRenderer.invoke('clients:get', id),
+  saveClient: (profile: unknown) => ipcRenderer.invoke('clients:save', profile),
+  deleteClient: (id: string) => ipcRenderer.invoke('clients:delete', id),
 
   // File & URL context management
   addFiles: (convId: string) => ipcRenderer.invoke('files:addFiles', convId),

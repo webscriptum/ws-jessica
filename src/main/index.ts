@@ -4,6 +4,7 @@ import { autoUpdater } from 'electron-updater'
 import { registerAgentIpc } from './ipc/agent.ipc'
 import { registerSettingsIpc } from './ipc/settings.ipc'
 import { registerVoiceIpc } from './ipc/voice.ipc'
+import { registerClientsIpc } from './ipc/clients.ipc'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -127,6 +128,7 @@ app.whenReady().then(() => {
   registerSettingsIpc(win)
   registerAgentIpc(win)
   registerVoiceIpc()
+  registerClientsIpc()
   registerUpdaterIpc()
   setupAutoUpdater()
 

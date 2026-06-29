@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import type { ClientProfile } from '../../../preload/index.d'
 
 interface DiskFile {
   filename: string
@@ -8,6 +9,7 @@ interface DiskFile {
 
 interface Props {
   convId: string
+  clientId?: string
   sourceFiles: string[]
   sourceUrls: string[]
   contextSummary: string | null
@@ -19,6 +21,7 @@ interface Props {
     summary: string | null,
     folder?: string
   ) => void
+  onClientChanged?: (clientId: string | null) => void
 }
 
 function shortPath(p: string): string {
@@ -52,20 +55,39 @@ function fileIcon(filename: string): string {
   return '📄'
 }
 
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[àáâãäå]/g, 'a')
+    .replace(/[èéêë]/g, 'e')
+    .replace(/[ìíîï]/g, 'i')
+    .replace(/[òóôõö]/g, 'o')
+    .replace(/[ùúûü]/g, 'u')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+}
+
 export default function AssetPanel({
   convId,
+  clientId,
   sourceFiles,
   sourceUrls,
   contextSummary,
   outputFolder,
   deliverables,
-  onContextUpdated
+  onContextUpdated,
+  onClientChanged
 }: Props): JSX.Element {
   const [summaryOpen, setSummaryOpen] = useState(false)
   const [showUrlInput, setShowUrlInput] = useState(false)
   const [urlInputValue, setUrlInputValue] = useState('')
   const [isSynthesizing, setIsSynthesizing] = useState(false)
   const [diskFiles, setDiskFiles] = useState<DiskFile[]>([])
+  const [clients, setClients] = useState<ClientProfile[]>([])
+  const [showNewClientInput, setShowNewClientInput] = useState(false)
+  const [newClientName, setNewClientName] = useState('')
+  const [isSavingClient, setIsSavingClient] = useState(false)
 
   const refreshDiskFiles = useCallback(async () => {
     if (!outputFolder) return
@@ -73,10 +95,18 @@ export default function AssetPanel({
     setDiskFiles(files)
   }, [outputFolder])
 
-  // Refresh when folder changes or a new deliverable is produced
+  const refreshClients = useCallback(async () => {
+    const list = await window.electronAPI.listClients()
+    setClients(list)
+  }, [])
+
   useEffect(() => {
     refreshDiskFiles()
   }, [outputFolder, deliverables.length, refreshDiskFiles])
+
+  useEffect(() => {
+    refreshClients()
+  }, [refreshClients])
 
   const handleAddFiles = async (): Promise<void> => {
     setIsSynthesizing(true)
@@ -134,9 +164,40 @@ export default function AssetPanel({
     window.electronAPI.openFile(path)
   }
 
-  const hasContext = sourceFiles.length > 0 || sourceUrls.length > 0
+  const handleClientSelect = async (newClientId: string): Promise<void> => {
+    const val = newClientId === '' ? null : newClientId
+    await window.electronAPI.setConversationClient(convId, val)
+    onClientChanged?.(val)
+  }
 
-  // Group disk files by date for display
+  const handleCreateClient = async (): Promise<void> => {
+    const name = newClientName.trim()
+    if (!name) return
+    setIsSavingClient(true)
+    const id = slugify(name) || Date.now().toString(36)
+    const profile: ClientProfile = {
+      id,
+      name,
+      updatedAt: new Date().toISOString(),
+      brand: {}
+    }
+    await window.electronAPI.saveClient(profile)
+    await refreshClients()
+    await window.electronAPI.setConversationClient(convId, id)
+    onClientChanged?.(id)
+    setNewClientName('')
+    setShowNewClientInput(false)
+    setIsSavingClient(false)
+  }
+
+  const currentClient = clients.find((c) => c.id === clientId) ?? null
+  const hasContext = sourceFiles.length > 0 || sourceUrls.length > 0
+  const colorSwatches = [
+    currentClient?.brand.primaryColor,
+    currentClient?.brand.accentColor,
+    currentClient?.brand.lightColor
+  ].filter(Boolean) as string[]
+
   const filesByDate = diskFiles.reduce<Record<string, DiskFile[]>>((acc, f) => {
     const key = f.date || 'Altro'
     if (!acc[key]) acc[key] = []
@@ -146,6 +207,78 @@ export default function AssetPanel({
 
   return (
     <div className="asset-panel">
+      {/* ── Cliente ── */}
+      <div className="asset-section">
+        <div className="asset-section-title">Cliente</div>
+
+        <div className="asset-client-row">
+          <select
+            className="asset-client-select"
+            value={clientId ?? ''}
+            onChange={(e) => handleClientSelect(e.target.value)}
+          >
+            <option value="">— Nessun cliente —</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <button
+            className="asset-edit-btn"
+            title="Crea nuovo cliente"
+            onClick={() => setShowNewClientInput((v) => !v)}
+          >
+            +
+          </button>
+        </div>
+
+        {showNewClientInput && (
+          <div className="asset-url-input-row">
+            <input
+              className="asset-url-input"
+              type="text"
+              placeholder="Nome cliente…"
+              value={newClientName}
+              onChange={(e) => setNewClientName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreateClient()
+                if (e.key === 'Escape') { setShowNewClientInput(false); setNewClientName('') }
+              }}
+              autoFocus
+              disabled={isSavingClient}
+            />
+            <button
+              className="asset-url-confirm"
+              onClick={handleCreateClient}
+              disabled={isSavingClient || !newClientName.trim()}
+            >
+              {isSavingClient ? '…' : '↵'}
+            </button>
+          </div>
+        )}
+
+        {currentClient && colorSwatches.length > 0 && (
+          <div className="asset-client-swatches">
+            {colorSwatches.map((color) => (
+              <div
+                key={color}
+                className="asset-client-swatch"
+                style={{ background: color }}
+                title={color}
+              />
+            ))}
+            {currentClient.brand.fonts?.length ? (
+              <span className="asset-client-font">{currentClient.brand.fonts[0]}</span>
+            ) : null}
+          </div>
+        )}
+
+        {currentClient && !colorSwatches.length && (
+          <p className="asset-empty-hint">Colori non ancora impostati — Jessica li apprenderà dal brief</p>
+        )}
+      </div>
+
       {/* ── Contesto ── */}
       <div className="asset-section">
         <div className="asset-section-title">Contesto</div>
@@ -259,7 +392,6 @@ export default function AssetPanel({
           </button>
         </div>
 
-        {/* File su disco raggruppati per data */}
         {diskFiles.length > 0 && (
           <div className="asset-disk-files">
             {Object.entries(filesByDate)
