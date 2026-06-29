@@ -8,6 +8,7 @@ import { writeDeliverable } from './tools/write-deliverable'
 import { writeWord } from './tools/write-word'
 import { writePdf } from './tools/write-pdf'
 import { writePresentation } from './tools/write-presentation'
+import { writeExcel } from './tools/write-excel'
 import { generateImage } from './tools/generate-image'
 import { detectSpecialty, SPECIALIST_PROMPTS } from './specialists'
 import { loadOpenAiKey } from '../storage/secure-storage'
@@ -38,14 +39,18 @@ SCELTA DEL FORMATO — prima di produrre qualsiasi deliverable, scelgo il format
     pitch deck, presentazione da proiettare → write_presentation (.pptx)
     documento da firmare, manuale, lettera formale → write_word (.docx)
 
-  Dati e testo:
+  Dati strutturati (tabellari):
+    media plan, content calendar, budget, piano editoriale, keyword list, analisi competitor → write_excel (.xlsx) — foglio professionale con header colorato
+    dati semplici senza layout → write_deliverable (.csv)
+
+  Testo e note:
     script, trascrizione, testo plain → write_deliverable (.txt)
-    dati tabulari, budget, schedule → write_deliverable (.csv)
     dati strutturati, config, API mock → write_deliverable (.json)
     note di lavoro, brief interni → write_deliverable (.md)
 
   Visuale:
     moodboard, color palette, visual identity board → write_html (.html) — layout HTML con swatches CSS, campioni tipografia, sezioni mood
+    post grafico social (Instagram, LinkedIn, Story, TikTok) → write_html con dimensioni fisse CSS (vedi write_html)
     illustrazione AI, render fotorealistico singolo, icona → generate_image (.png)
 
 REGOLA ASSOLUTA: non scrivo mai HTML dentro un PDF. Non uso mai una presentazione quando serve un documento. Il formato sbagliato annulla il lavoro.
@@ -116,24 +121,26 @@ NON usare per HTML (→ write_html), PDF (→ write_pdf), Word (→ write_word),
     description: `Genera un PDF impaginato. Due modalità:
 
 ━━ MODALITÀ HTML (documenti grafici: brochure, catalogo, company profile, brand book) ━━
-Genera HTML+CSS completo che inizia con <!DOCTYPE html>. Progetta liberamente il layout in base all'identità visiva del cliente.
+Genera HTML+CSS completo che inizia con <!DOCTYPE html>. Progetta liberamente il layout.
+Per PDF ORIZZONTALE (landscape): inizia il content con la direttiva [LANDSCAPE] sulla prima riga.
 
-CSS OBBLIGATORI per la stampa A4 (includili sempre nel <style>):
-  @page { size: A4; margin: 0; }
+CSS OBBLIGATORI — rispettali ESATTAMENTE per evitare pagine bianche:
+  @page { size: A4; margin: 0; }                        ← landscape: size: 297mm 210mm
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; margin: 0; padding: 0; }
-  .pbreak { page-break-after: always; break-after: page; height: 0; display: block; }
+  /* REGOLA: usa SOLO break-after, MAI page-break-after (causa pagine bianche extra in Chromium) */
+  .pbreak { break-after: page; height: 0; display: block; }
   body { font-family: 'Helvetica Neue', Arial, sans-serif; }
 
-Pattern consigliati:
-  Copertina → div con background colorato, min-height:100vh, page-break-after:always, contenuto in fondo (align-items:flex-end)
-  Sezione → div con background colorato, padding 12px 20mm, font-weight:bold, text-transform:uppercase
-  Card elemento → border-top:3px solid [colore], border:1px solid #eee, border-radius:4px, padding:16px
+Pattern layout:
+  Copertina full-page → height:297mm (portrait) o height:210mm (landscape), break-after:page — NON min-height:100vh
+  Sezione → div con background colorato, padding 12px 20mm, font-weight:bold, text-transform:uppercase, break-after:avoid
+  Card elemento → border-top:3px solid [colore], border:1px solid #eee, border-radius:4px, padding:16px, break-inside:avoid
   Griglia 2 colonne → display:grid; grid-template-columns:1fr 1fr; gap:16px
   Placeholder immagine → background:#f0f0f0; border:1px dashed #ccc; display:flex; align-items:center; justify-content:center
   Interruzione di pagina → <div class="pbreak"></div>
 
-Adatta dimensioni font in pt (non px): titoli 28-48pt, sottotitoli 12-16pt, corpo 9.5-10.5pt.
-Usa i colori del cliente dall'identità visiva nel contesto — non i colori Webscriptum.
+Font in pt (non px): titoli 28-48pt, sottotitoli 12-16pt, corpo 9.5-10.5pt.
+Usa i colori del cliente dal contesto — non i colori Webscriptum.
 
 ━━ MODALITÀ MARKDOWN (report, note, bozze) ━━
 [COLORI:#primary,#dark,#neutral] — prima riga opzionale per i colori
@@ -150,12 +157,66 @@ Usa i colori del cliente dall'identità visiva nel contesto — non i colori Web
   },
   {
     name: 'write_presentation',
-    description: 'Salva una presentazione PowerPoint (.pptx). Per pitch deck, brand presentation e slide da mostrare al cliente. Usa --- per separare le slide.',
+    description: `Salva una presentazione PowerPoint (.pptx) con layout professionali e colori brand.
+
+FORMATO OBBLIGATORIO — usa esattamente questa sintassi:
+
+[TEMA:#primary,#accent,#light]
+(es. [TEMA:#1A2B3C,#FF5A00,#F5F5F5] — estrai sempre dall'identità visiva del cliente)
+
+Tipi di slide disponibili:
+  COVER|Titolo principale|Sottotitolo o claim
+  SECTION|Nome della sezione
+  CONTENT|Titolo slide
+  - bullet point uno
+  - bullet point due
+  QUOTE|"Testo della citazione"|Nome Cognome, Ruolo
+  TWO_COL|Titolo slide
+  LEFT|Contenuto colonna sinistra (testo libero)
+  RIGHT|Contenuto colonna destra (testo libero)
+
+Regole:
+- Inizia SEMPRE con COVER come prima slide
+- Usa SECTION prima di ogni gruppo tematico
+- CONTENT per slide con testo o bullet (preferisci i bullet — max 5-6 per slide)
+- QUOTE per testimonianze, dati impattanti, citazioni
+- TWO_COL per confronti, prima/dopo, dati affiancati
+- NON usare markdown tradizionale (##, *), usa SOLO i marker sopra`,
     input_schema: {
       type: 'object' as const,
       properties: {
         filename: { type: 'string', description: 'Nome file con estensione .pptx' },
-        content: { type: 'string', description: 'Slide in markdown: # titolo, ## sottotitolo, - bullet, --- separa le slide.' }
+        content: { type: 'string', description: 'Slide nel formato strutturato (vedi descrizione del tool)' }
+      },
+      required: ['filename', 'content']
+    }
+  },
+  {
+    name: 'write_excel',
+    description: `Salva un foglio Excel (.xlsx) professionale con colori brand e formattazione automatica. Usa per:
+- Media plan, content calendar, editorial plan
+- Budget, preventivi, tracking spese
+- Keyword list, analisi competitor, benchmark
+- Qualsiasi tabella strutturata che il cliente aprirà in Excel/Google Sheets
+
+FORMATO OBBLIGATORIO:
+[TEMA:#primary,#accent]
+colonne: Colonna1,Colonna2,Colonna3,...
+---
+valore1,valore2,valore3
+valore4,valore5,valore6
+
+Opzionale — aggiungere una riga titolo prima di "colonne:":
+titolo: Titolo del documento
+
+Note:
+- Valori con virgole interne: racchiudili tra virgolette ("Testo, con virgola")
+- Usa i colori brand del cliente dal contesto — non i colori Webscriptum`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        filename: { type: 'string', description: 'Nome file con estensione .xlsx' },
+        content: { type: 'string', description: 'Contenuto nel formato strutturato (vedi descrizione del tool)' }
       },
       required: ['filename', 'content']
     }
@@ -166,13 +227,22 @@ Usa i colori del cliente dall'identità visiva nel contesto — non i colori Web
 - Mockup di homepage, landing page, pagine web
 - Template email HTML
 - Interfacce UI, componenti web, prototipi interattivi
-- Qualsiasi output che deve essere visualizzato nel browser
+- Post grafici social (Instagram, LinkedIn, Story, TikTok) — vedi dimensioni sotto
+- Moodboard, color palette, visual identity board
 
 Genera HTML5 completo e self-contained:
 - Boilerplate: <!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 - CSS nel <style> — nessuna dipendenza esterna (o CDN se appropriato per icone/font)
 - Usa px/rem/% — NON pt (pt è per la stampa PDF)
-- Per mockup: cura la grafica, usa i colori del cliente, aggiungi placeholder realistici per immagini e testi`,
+- Per mockup: cura la grafica, usa i colori del cliente, aggiungi placeholder realistici per immagini e testi
+
+POST GRAFICO SOCIAL — usa dimensioni fisse (apribile nel browser, screenshottabile):
+  Instagram post quadrato: body { width:1080px; height:1080px; overflow:hidden; margin:0; }
+  Story / TikTok verticale: body { width:1080px; height:1920px; overflow:hidden; margin:0; }
+  LinkedIn / OG image: body { width:1200px; height:628px; overflow:hidden; margin:0; }
+
+  Per post social: sfondo brand (gradiente o solid), font via @import Google, solo CSS + SVG inline + emoji (niente immagini esterne).
+  Nome file: "post-instagram-[slug].html", "story-[slug].html", "linkedin-[slug].html"`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -383,9 +453,10 @@ export class Orchestrator {
             toolUse.name === 'write_html' ||
             toolUse.name === 'write_word' ||
             toolUse.name === 'write_pdf' ||
-            toolUse.name === 'write_presentation'
+            toolUse.name === 'write_presentation' ||
+            toolUse.name === 'write_excel'
           ) {
-            const icon = toolUse.name === 'write_pdf' ? '📕' : toolUse.name === 'write_word' ? '📘' : toolUse.name === 'write_presentation' ? '📊' : '📄'
+            const icon = toolUse.name === 'write_pdf' ? '📕' : toolUse.name === 'write_word' ? '📘' : toolUse.name === 'write_presentation' ? '📊' : toolUse.name === 'write_excel' ? '📗' : '📄'
             this.sendStatus(`${icon} Scrittura: ${input.filename}`)
             try {
               const outputDir = await this.resolveOutputDir()
@@ -396,6 +467,8 @@ export class Orchestrator {
                 written = await writePdf(outputDir, input.filename, input.content)
               } else if (toolUse.name === 'write_presentation') {
                 written = await writePresentation(outputDir, input.filename, input.content)
+              } else if (toolUse.name === 'write_excel') {
+                written = await writeExcel(outputDir, input.filename, input.content)
               } else {
                 written = await writeDeliverable(outputDir, input.filename, input.content)
               }

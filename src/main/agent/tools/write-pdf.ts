@@ -171,8 +171,9 @@ function buildBody(content: string, colors: Colors, docTitle: string): string {
 
 // ─── Full HTML document ────────────────────────────────────────────────────
 
-function buildHtml(content: string, colors: Colors, docTitle: string): string {
+function buildHtml(content: string, colors: Colors, docTitle: string, isLandscape = false): string {
   const body = buildBody(content, colors, docTitle)
+  const pageH = isLandscape ? '210mm' : '297mm'
 
   // Luminance check for cover text color
   const hex = colors.primary.replace('#', '')
@@ -193,7 +194,7 @@ function buildHtml(content: string, colors: Colors, docTitle: string): string {
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
   /* ── Print settings ── */
-  @page { size: A4; margin: 0; }
+  @page { size: ${isLandscape ? '297mm 210mm' : 'A4'}; margin: 0; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
   /* ── Base ── */
@@ -207,7 +208,6 @@ function buildHtml(content: string, colors: Colors, docTitle: string): string {
 
   /* ── Page break ── */
   .page-break {
-    page-break-after: always;
     break-after: page;
     display: block;
     height: 0;
@@ -216,10 +216,9 @@ function buildHtml(content: string, colors: Colors, docTitle: string): string {
   /* ── Cover ── */
   .cover {
     background: ${colors.dark};
-    min-height: 100vh;
+    height: ${pageH};
     display: flex;
     align-items: flex-end;
-    page-break-after: always;
     break-after: page;
     position: relative;
     overflow: hidden;
@@ -291,7 +290,7 @@ function buildHtml(content: string, colors: Colors, docTitle: string): string {
   /* ── Content wrapper ── */
   .ws-content {
     padding: 48px 56px;
-    max-width: 210mm;
+    max-width: ${isLandscape ? '297mm' : '210mm'};
   }
 
   /* ── Chapter title (H1 non-cover) ── */
@@ -309,7 +308,7 @@ function buildHtml(content: string, colors: Colors, docTitle: string): string {
     background: ${colors.primary};
     margin: 36px -56px 24px;
     padding: 12px 56px;
-    page-break-after: avoid;
+    break-after: avoid;
   }
   .section-header span {
     font-size: 11pt;
@@ -326,7 +325,6 @@ function buildHtml(content: string, colors: Colors, docTitle: string): string {
     border-radius: 4px;
     margin: 20px 0;
     overflow: hidden;
-    page-break-inside: avoid;
     break-inside: avoid;
   }
   .prod-title {
@@ -430,21 +428,27 @@ export async function writePdf(
   const docTitle = filename.replace(/\.pdf$/i, '')
   const tmpHtml = join(app.getPath('temp'), `ws-pdf-${Date.now()}.html`)
 
-  const isHtml = content.trimStart().startsWith('<')
+  // Detect [LANDSCAPE] directive (works for both markdown and HTML modes)
+  const isLandscape = /^\s*\[LANDSCAPE\]/.test(content)
+  const processedContent = isLandscape ? content.replace(/^\s*\[LANDSCAPE\]\n?/, '') : content
+
+  const isHtml = processedContent.trimStart().startsWith('<')
   let html: string
   if (isHtml) {
-    html = content
+    html = processedContent
   } else {
-    const { colors, content: cleanContent } = extractColors(content)
-    html = buildHtml(cleanContent, colors, docTitle)
+    const { colors, content: cleanContent } = extractColors(processedContent)
+    html = buildHtml(cleanContent, colors, docTitle, isLandscape)
   }
 
   await writeFile(tmpHtml, html, 'utf-8')
 
+  const winWidth = isLandscape ? 1123 : 794
+  const winHeight = isLandscape ? 794 : 1123
   const win = new BrowserWindow({
     show: false,
-    width: 794,
-    height: 1123,
+    width: winWidth,
+    height: winHeight,
     webPreferences: { nodeIntegration: false, contextIsolation: true }
   })
 
@@ -454,8 +458,11 @@ export async function writePdf(
     await win.webContents.executeJavaScript(
       'Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 5000))])'
     )
+    const pdfSize = isLandscape
+      ? { width: 297000, height: 210000 }  // A4 landscape in microns
+      : 'A4' as const
     const pdfBuffer = await Promise.race([
-      win.webContents.printToPDF({ printBackground: true, pageSize: 'A4', margins: { marginType: 'none' } }),
+      win.webContents.printToPDF({ printBackground: true, pageSize: pdfSize, margins: { marginType: 'none' } }),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('PDF generation timed out after 60s')), 60_000)
       )
