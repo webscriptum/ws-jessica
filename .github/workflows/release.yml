@@ -25,3 +25,8 @@ jobs:
         run: npx electron-vite build && npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Mark release as published
+        run: gh release edit "${{ github.ref_name }}" --draft=false --latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
