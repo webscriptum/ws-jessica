@@ -62,6 +62,7 @@ export interface ElectronAPI {
   onError: (cb: (e: string) => void) => () => void
   onDeliverable: (cb: (d: Deliverable) => void) => () => void
   onImage: (cb: (img: { filename: string; base64: string }) => void) => () => void
+  onStatus: (cb: (status: string | null) => void) => () => void
 
   // Settings
   getSettings: () => Promise<{ hasApiKey: boolean; hasOpenAiKey: boolean; voiceMode: VoiceMode; modelMode: ModelMode }>

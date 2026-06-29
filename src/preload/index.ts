@@ -54,6 +54,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('agent:image', handler)
     return () => ipcRenderer.removeListener('agent:image', handler)
   },
+  onStatus: (cb: (status: string | null) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, s: unknown): void => cb(s as string | null)
+    ipcRenderer.on('agent:status', handler)
+    return () => ipcRenderer.removeListener('agent:status', handler)
+  },
 
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),

@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { dialog, app } from 'electron'
 import type { BrowserWindow } from 'electron'
-import { join } from 'path'
+import { readFile } from 'fs/promises'
+import { join, extname } from 'path'
 import { readSourceFile } from './tools/read-source-file'
 import { writeDeliverable } from './tools/write-deliverable'
 import { writeWord } from './tools/write-word'
@@ -24,6 +25,7 @@ Regole operative:
 - Usa sempre l'italiano salvo richiesta diversa
 - Rispondi in modo conversazionale e professionale, come farebbe una collega senior
 - Quando hai bisogno di ricontrollare un dettaglio specifico dai materiali originali, usa read_source_file
+- Quando l'utente chiede di modificare o aggiornare un file già prodotto (HTML, testo, CSV…), usa read_output_file per leggerlo, poi riscrivi la versione aggiornata con il tool appropriato (verrà salvata come -v2 automaticamente)
 - Quando produci un deliverable completo, scegli il formato più adatto e salva con il tool corretto
 
 SCELTA DEL FORMATO — prima di produrre qualsiasi deliverable, scelgo il formato che il destinatario può usare SUBITO senza conversioni:
@@ -181,6 +183,17 @@ Genera HTML5 completo e self-contained:
     }
   },
   {
+    name: 'read_output_file',
+    description: `Rileggi un file già prodotto nella cartella output per modificarlo o aggiornarlo. Restituisce il contenuto testuale del file (funziona bene per .html, .md, .txt, .csv, .json; per PDF/DOCX/PPTX restituisce il testo estratto). Dopo aver letto il file, usa il tool di scrittura appropriato per salvare la versione modificata (verrà salvata automaticamente come -v2, -v3 ecc.).`,
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        filename: { type: 'string', description: 'Nome del file da leggere dalla cartella output (es. "landing-page.html", "company-profile.pdf")' }
+      },
+      required: ['filename']
+    }
+  },
+  {
     name: 'generate_image',
     description: 'Genera una singola immagine PNG con DALL-E 3. Da usare SOLO per illustrazioni AI singole, render fotorealistici o icone. NON per moodboard (usa write_html con layout CSS).',
     input_schema: {
@@ -302,8 +315,10 @@ export class Orchestrator {
     })
   }
 
-  private sendStatus(text: string): void {
-    if (!this.cancelled) this.mainWindow.webContents.send('agent:token', text)
+  private sendStatus(label: string): void {
+    if (this.cancelled) return
+    // Show as prominent status banner in UI (separate from the message stream)
+    this.mainWindow.webContents.send('agent:status', label)
   }
 
   async sendMessage(userMessage: string, voiceMode?: string): Promise<DeliverableWritten[]> {
@@ -346,8 +361,23 @@ export class Orchestrator {
           let result: string
 
           if (toolUse.name === 'read_source_file') {
-            this.sendStatus(`\n\n*📖 Lettura: ${input.filename}…*`)
+            this.sendStatus(`📖 Lettura file sorgente: ${input.filename}`)
             result = await readSourceFile(this.sourceFiles, input.filename)
+          } else if (toolUse.name === 'read_output_file') {
+            this.sendStatus(`📂 Lettura output: ${input.filename}`)
+            try {
+              const outputDir = await this.resolveOutputDir()
+              const filePath = join(outputDir, input.filename)
+              const ext = extname(input.filename).toLowerCase()
+              if (['.html', '.htm', '.md', '.txt', '.csv', '.json', '.xml', '.svg'].includes(ext)) {
+                const content = await readFile(filePath, 'utf-8')
+                result = `Contenuto di ${input.filename}:\n\n${content}`
+              } else {
+                result = `Il file ${input.filename} è in formato binario (${ext}) — non è leggibile direttamente. Per modificarlo ricrealo usando il tool di scrittura appropriato basandoti sul contesto della conversazione.`
+              }
+            } catch (e) {
+              result = `File non trovato nella cartella output: ${input.filename}`
+            }
           } else if (
             toolUse.name === 'write_deliverable' ||
             toolUse.name === 'write_html' ||
@@ -356,7 +386,7 @@ export class Orchestrator {
             toolUse.name === 'write_presentation'
           ) {
             const icon = toolUse.name === 'write_pdf' ? '📕' : toolUse.name === 'write_word' ? '📘' : toolUse.name === 'write_presentation' ? '📊' : '📄'
-            this.sendStatus(`\n\n*${icon} Scrittura: ${input.filename}…*`)
+            this.sendStatus(`${icon} Scrittura: ${input.filename}`)
             try {
               const outputDir = await this.resolveOutputDir()
               let written: DeliverableWritten
@@ -376,7 +406,7 @@ export class Orchestrator {
               result = `Errore nel salvataggio: ${e instanceof Error ? e.message : String(e)}`
             }
           } else if (toolUse.name === 'generate_image') {
-            this.sendStatus(`\n\n*🎨 Generazione immagine: ${input.filename}…*`)
+            this.sendStatus(`🎨 Generazione immagine: ${input.filename}`)
             const currentKey = loadOpenAiKey()
             if (!currentKey) {
               result = 'Generazione immagini non disponibile: configura la OpenAI API key nelle Impostazioni.'
@@ -397,6 +427,7 @@ export class Orchestrator {
             result = `Tool "${toolUse.name}" non riconosciuto.`
           }
 
+          this.mainWindow.webContents.send('agent:status', null) // clear after each tool
           toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: result })
         }
 

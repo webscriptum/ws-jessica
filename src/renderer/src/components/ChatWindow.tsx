@@ -39,6 +39,7 @@ export default function ChatWindow({
   const [onboardingDone, setOnboardingDone] = useState(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('off')
   const [pendingResponse, setPendingResponse] = useState(false)
+  const [agentStatus, setAgentStatus] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const messagesListRef = useRef<HTMLDivElement>(null)
   const isUserScrolledUpRef = useRef(false)
@@ -158,6 +159,7 @@ export default function ChatWindow({
       streamingIdRef.current = null
       voiceSpokenRef.current = false
       setIsRunning(false)
+      setAgentStatus(null)
       onConversationUpdate()
 
       if (voiceMode === 'conversation' && text && !wasVoiceSpoken) {
@@ -165,11 +167,17 @@ export default function ChatWindow({
       }
     })
 
+    const offStatus = window.electronAPI.onStatus((s) => {
+      setAgentStatus(s)
+      if (s) setPendingResponse(false) // tool running — hide dots, show status pill
+    })
+
     const offError = window.electronAPI.onError((error) => {
       streamingTextRef.current = ''
       streamingIdRef.current = null
       setIsRunning(false)
       setPendingResponse(false)
+      setAgentStatus(null)
       setMessages((prev) => [
         ...prev,
         { id: uid(), role: 'assistant', content: `**Errore:** ${error}` }
@@ -193,6 +201,7 @@ export default function ChatWindow({
       offError()
       offDeliverable()
       offImage()
+      offStatus()
     }
   }, [onConversationUpdate, voiceMode, playTts])
 
@@ -287,18 +296,17 @@ export default function ChatWindow({
           {messages.map((m) => (
             <MessageBubble key={m.id} message={m} />
           ))}
-          {isRunning && pendingResponse && (
-            <div className="typing-indicator">
-              <div className="typing-avatar">
-                <JessicaAvatar size={22} />
-              </div>
-              <div className="typing-dots">
-                <span /><span /><span />
-              </div>
-            </div>
-          )}
           <div ref={bottomRef} />
         </div>
+
+        {isRunning && (agentStatus || pendingResponse) && (
+          <div className="agent-status-bar">
+            <span className="agent-status-spinner" />
+            <span className="agent-status-text">
+              {agentStatus ?? 'Sto pensando…'}
+            </span>
+          </div>
+        )}
 
         {voiceMode === 'conversation' && (
           <div className="conversation-mode-bar">
