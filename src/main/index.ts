@@ -1,27 +1,56 @@
-import { app, BrowserWindow, shell, dialog, session, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, dialog, session, ipcMain, screen } from 'electron'
 import { join } from 'path'
 import { autoUpdater } from 'electron-updater'
 import { registerAgentIpc } from './ipc/agent.ipc'
 import { registerSettingsIpc } from './ipc/settings.ipc'
 import { registerVoiceIpc } from './ipc/voice.ipc'
 import { registerClientsIpc } from './ipc/clients.ipc'
+import { loadAppSettings } from './storage/app-settings'
 
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
-  mainWindow = new BrowserWindow({
-    width: 960,
-    height: 720,
-    minWidth: 700,
-    minHeight: 500,
-    show: false,
-    autoHideMenuBar: true,
-    title: 'WS Jessica',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
-  })
+  const settings = loadAppSettings()
+
+  if (settings.mascotMode) {
+    const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize
+    const ww = 380
+    const wx = settings.mascotPosition === 'bottom-left' ? 0 : sw - ww
+    mainWindow = new BrowserWindow({
+      width: ww,
+      height: sh,
+      x: wx,
+      y: 0,
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      resizable: false,
+      hasShadow: false,
+      skipTaskbar: false,
+      show: false,
+      autoHideMenuBar: true,
+      title: 'WS Jessica',
+      backgroundColor: '#00000000',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        sandbox: false
+      }
+    })
+  } else {
+    mainWindow = new BrowserWindow({
+      width: 960,
+      height: 720,
+      minWidth: 700,
+      minHeight: 500,
+      show: false,
+      autoHideMenuBar: true,
+      title: 'WS Jessica',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        sandbox: false
+      }
+    })
+  }
 
   mainWindow.on('ready-to-show', () => {
     mainWindow!.show()

@@ -81,12 +81,13 @@ Playbook multi-step — quando l'utente chiede un'attività "completa" o un inte
 - Per ogni sequenza: avverti l'utente in anticipo quali file produrrai, poi eseguili in ordine senza interruzioni`
 
 const VOICE_CONVERSATION_SYSTEM = `
-MODALITÀ CONVERSAZIONE VOCALE ATTIVA — struttura OGNI risposta così:
-[VOCE]Una o due frasi naturali, come le diresti parlando. Niente markdown, niente elenchi, niente tecnicismi.[/VOCE]
 
-Poi scrivi il testo completo nella chat con tutti i dettagli, markdown, liste, ecc.
-Il contenuto tra [VOCE] e [/VOCE] viene letto ad alta voce appena pronto — DEVE essere breve.
-Se la risposta è già brevissima (una frase), ometti il testo scritto aggiuntivo.`
+MODALITÀ VOCE ATTIVA — adatta le risposte per essere lette ad alta voce:
+- Frasi complete e naturali, come le diresti parlando
+- Niente markdown, niente elenchi con -, niente header #, niente **grassetto**
+- Sii conciso: 2-4 frasi al massimo per risposte conversazionali
+- Quando finisci un deliverable, concludi con una frase come "Il file è pronto nella cartella output"
+- Il testo viene letto direttamente — nessun tag necessario`
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -620,6 +621,7 @@ export class Orchestrator {
                 const updated = await updateClientField(this.clientId, input.field, input.value)
                 if (updated) {
                   result = `Profilo cliente aggiornato: ${input.field} = "${input.value}". Le informazioni sono salvate per tutte le future conversazioni con ${updated.name}.`
+                  this.mainWindow.webContents.send('client:updated', this.clientId)
                 } else {
                   result = `Cliente non trovato (id: ${this.clientId}).`
                 }

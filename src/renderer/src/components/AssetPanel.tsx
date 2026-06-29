@@ -108,6 +108,13 @@ export default function AssetPanel({
     refreshClients()
   }, [refreshClients])
 
+  useEffect(() => {
+    const off = window.electronAPI.onClientUpdated((updatedId) => {
+      if (updatedId === clientId) refreshClients()
+    })
+    return off
+  }, [clientId, refreshClients])
+
   const handleAddFiles = async (): Promise<void> => {
     setIsSynthesizing(true)
     const result = await window.electronAPI.addFiles(convId)

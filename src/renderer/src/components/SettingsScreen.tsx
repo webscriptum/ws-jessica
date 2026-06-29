@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { VoiceMode, ModelMode } from '../../../preload/index.d'
+import type { VoiceMode, ModelMode, MascotPosition, MascotAvatarSize } from '../../../preload/index.d'
 
 type UpdaterStatus = 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' | 'error'
 
@@ -10,6 +10,9 @@ export default function SettingsScreen(): JSX.Element {
   const [hasOpenAiKey, setHasOpenAiKey] = useState(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('off')
   const [modelMode, setModelMode] = useState<ModelMode>('sonnet')
+  const [mascotMode, setMascotMode] = useState(false)
+  const [mascotPosition, setMascotPosition] = useState<MascotPosition>('bottom-right')
+  const [mascotAvatarSize, setMascotAvatarSize] = useState<MascotAvatarSize>('medium')
   const [saved, setSaved] = useState(false)
   const [version, setVersion] = useState('')
   const [updaterStatus, setUpdaterStatus] = useState<UpdaterStatus>('idle')
@@ -24,6 +27,9 @@ export default function SettingsScreen(): JSX.Element {
       setOpenAiKey(s.hasOpenAiKey ? '••••••••' : '')
       setVoiceMode(s.voiceMode)
       setModelMode(s.modelMode)
+      setMascotMode(s.mascotMode)
+      setMascotPosition(s.mascotPosition)
+      setMascotAvatarSize(s.mascotAvatarSize)
     })
     window.electronAPI.getVersion().then(setVersion)
 
@@ -40,7 +46,10 @@ export default function SettingsScreen(): JSX.Element {
       apiKey: apiKey !== '••••••••' ? apiKey : undefined,
       openAiKey: openAiKey !== '••••••••' ? openAiKey : undefined,
       voiceMode,
-      modelMode
+      modelMode,
+      mascotMode,
+      mascotPosition,
+      mascotAvatarSize
     })
     if (apiKey && apiKey !== '••••••••') setHasApiKey(true)
     if (openAiKey && openAiKey !== '••••••••') setHasOpenAiKey(true)
@@ -154,6 +163,68 @@ export default function SettingsScreen(): JSX.Element {
           </div>
           <p className="settings-hint" style={{ marginTop: 8 }}>
             Sonnet è consigliato per quasi tutto. Opus può aiutare su strategia complessa o testi critici.
+          </p>
+        </div>
+
+        {/* ── Modalità Mascotte ── */}
+        <div className="settings-card">
+          <div className="settings-card-title">Modalità Mascotte</div>
+
+          <div className="mascot-toggle-row">
+            <button
+              className={`mascot-toggle-btn ${mascotMode ? 'active' : ''}`}
+              onClick={() => setMascotMode((v) => !v)}
+            >
+              <span className="mascot-toggle-dot" />
+            </button>
+            <span className="mascot-toggle-label">
+              {mascotMode ? 'Jessica come robot overlay' : 'Interfaccia standard'}
+            </span>
+          </div>
+
+          {mascotMode && (
+            <>
+              <div className="settings-field" style={{ marginTop: 12 }}>
+                <label className="settings-label">Posizione</label>
+                <div className="voice-seg">
+                  <button
+                    className={`voice-seg-btn ${mascotPosition === 'bottom-right' ? 'active' : ''}`}
+                    onClick={() => setMascotPosition('bottom-right')}
+                  >
+                    <span className="voice-seg-label">Destra</span>
+                    <span className="voice-seg-desc">Angolo basso destra</span>
+                  </button>
+                  <button
+                    className={`voice-seg-btn ${mascotPosition === 'bottom-left' ? 'active' : ''}`}
+                    onClick={() => setMascotPosition('bottom-left')}
+                  >
+                    <span className="voice-seg-label">Sinistra</span>
+                    <span className="voice-seg-desc">Angolo basso sinistra</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-field" style={{ marginTop: 12 }}>
+                <label className="settings-label">Dimensione avatar</label>
+                <div className="voice-seg">
+                  {(['small', 'medium', 'large'] as MascotAvatarSize[]).map((sz) => (
+                    <button
+                      key={sz}
+                      className={`voice-seg-btn ${mascotAvatarSize === sz ? 'active' : ''}`}
+                      onClick={() => setMascotAvatarSize(sz)}
+                    >
+                      <span className="voice-seg-label">
+                        {sz === 'small' ? 'Piccolo' : sz === 'medium' ? 'Medio' : 'Grande'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          <p className="settings-hint" style={{ marginTop: 8 }}>
+            Il cambio richiede riavvio automatico dell'app.
           </p>
         </div>
 

@@ -83,6 +83,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('updater:status', handler)
   },
 
+  // Client profile updates (emitted when agent calls save_client_info)
+  onClientUpdated: (cb: (clientId: string) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, id: string): void => cb(id)
+    ipcRenderer.on('client:updated', handler)
+    return () => ipcRenderer.removeListener('client:updated', handler)
+  },
+
   // Voice: TTS
   speakText: (text: string) => ipcRenderer.invoke('tts:speak', text),
 

@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { readFile, writeFile } from 'fs/promises'
+import { readFile, writeFile, copyFile } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import type { ClientProfile } from '../../shared/types'
@@ -13,13 +13,20 @@ async function readAll(): Promise<Record<string, ClientProfile>> {
   if (!existsSync(path)) return {}
   try {
     return JSON.parse(await readFile(path, 'utf-8'))
-  } catch {
+  } catch (e) {
+    console.error('[clients] Failed to parse clients.json:', e)
+    try { await copyFile(path, `${path}.backup.${Date.now()}`) } catch {}
     return {}
   }
 }
 
+let writeQueue: Promise<void> = Promise.resolve()
+
 async function writeAll(data: Record<string, ClientProfile>): Promise<void> {
-  await writeFile(getClientsPath(), JSON.stringify(data, null, 2), 'utf-8')
+  writeQueue = writeQueue.then(() =>
+    writeFile(getClientsPath(), JSON.stringify(data, null, 2), 'utf-8')
+  )
+  return writeQueue
 }
 
 export async function listClients(): Promise<ClientProfile[]> {

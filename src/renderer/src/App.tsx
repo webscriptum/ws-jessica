@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import ChatWindow from './components/ChatWindow'
 import SettingsScreen from './components/SettingsScreen'
-import type { ConversationSummary, Conversation } from '../../preload/index.d'
+import MascotLayout from './components/MascotLayout'
+import type { ConversationSummary, Conversation, MascotAvatarSize } from '../../preload/index.d'
 
 type View = 'chat' | 'settings'
 
@@ -10,10 +11,19 @@ export default function App(): JSX.Element {
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [activeConv, setActiveConv] = useState<Conversation | null>(null)
   const [view, setView] = useState<View>('chat')
+  const [mascotMode, setMascotMode] = useState(false)
+  const [mascotAvatarSize, setMascotAvatarSize] = useState<MascotAvatarSize>('medium')
 
   const refreshConversations = useCallback(async () => {
     const list = await window.electronAPI.listConversations()
     setConversations(list)
+  }, [])
+
+  useEffect(() => {
+    window.electronAPI.getSettings().then((s) => {
+      setMascotMode(s.mascotMode)
+      setMascotAvatarSize(s.mascotAvatarSize)
+    })
   }, [])
 
   useEffect(() => {
@@ -96,6 +106,19 @@ export default function App(): JSX.Element {
       if (updated) setActiveConv(updated)
     }
   }, [activeConv, refreshConversations])
+
+  if (mascotMode) {
+    return (
+      <MascotLayout
+        activeConv={activeConv}
+        onConversationUpdate={handleConversationUpdate}
+        onNewChat={handleNewChat}
+        avatarSize={mascotAvatarSize}
+        onSettingsToggle={() => setView((v) => (v === 'settings' ? 'chat' : 'settings'))}
+        showSettings={view === 'settings'}
+      />
+    )
+  }
 
   return (
     <div className="app">

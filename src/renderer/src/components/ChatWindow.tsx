@@ -18,14 +18,30 @@ interface Message {
 interface Props {
   conversationId: string
   onConversationUpdate: () => void
+  compact?: boolean
+  onRunningChange?: (running: boolean) => void
 }
 
 let msgCounter = 0
 const uid = (): string => `m-${++msgCounter}`
 
+const TTS_MAX_SENTENCES = 3
+
+function stripMarkdownForTts(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .trim()
+}
+
 export default function ChatWindow({
   conversationId,
-  onConversationUpdate
+  onConversationUpdate,
+  compact = false,
+  onRunningChange
 }: Props): JSX.Element {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -46,8 +62,11 @@ export default function ChatWindow({
   const isUserScrolledUpRef = useRef(false)
   const streamingIdRef = useRef<string | null>(null)
   const streamingTextRef = useRef<string>('')
-  const voiceSpokenRef = useRef(false)
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
+  const sentenceBufferRef = useRef<string>('')
+  const ttsQueueRef = useRef<string[]>([])
+  const isTtsBusyRef = useRef(false)
+  const ttsSentenceCountRef = useRef(0)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const scrollToBottom = useCallback((force = false) => {
@@ -75,76 +94,100 @@ export default function ChatWindow({
       setOutputFolder(conv.outputFolder)
       setClientId(conv.clientId)
       setHasContext(!!conv.contextSummary)
-      // Mark onboarding done for existing conversations with messages
       if (conv.messages.length > 0) setOnboardingDone(true)
     })
     window.electronAPI.getSettings().then((s) => {
       setVoiceMode(s.voiceMode)
     })
+    return () => {
+      currentAudioRef.current?.pause()
+      currentAudioRef.current = null
+      ttsQueueRef.current = []
+      isTtsBusyRef.current = false
+      sentenceBufferRef.current = ''
+      ttsSentenceCountRef.current = 0
+    }
   }, [conversationId])
 
   useEffect(() => {
     scrollToBottom()
   }, [messages, scrollToBottom])
 
-  const playTts = useCallback(async (text: string): Promise<void> => {
-    if (!text.trim()) return
-    currentAudioRef.current?.pause()
-    try {
-      const result = await window.electronAPI.speakText(text)
-      if (result.ok && result.base64) {
-        const audio = new Audio(`data:audio/mpeg;base64,${result.base64}`)
-        currentAudioRef.current = audio
-        await audio.play()
+  const drainTtsQueue = useCallback(async (): Promise<void> => {
+    if (isTtsBusyRef.current) return
+    isTtsBusyRef.current = true
+    while (ttsQueueRef.current.length > 0) {
+      const text = ttsQueueRef.current.shift()!
+      try {
+        const result = await window.electronAPI.speakText(text)
+        if (result.ok && result.base64) {
+          const audio = new Audio(`data:audio/mpeg;base64,${result.base64}`)
+          currentAudioRef.current = audio
+          await new Promise<void>((r) => {
+            audio.onended = r
+            audio.onerror = r
+            audio.play().catch(r)
+          })
+          currentAudioRef.current = null
+        }
+      } catch (e) {
+        console.error('TTS error:', e)
       }
-    } catch (e) {
-      console.error('TTS error:', e)
     }
+    isTtsBusyRef.current = false
   }, [])
+
+  const enqueueTts = useCallback((text: string): void => {
+    if (voiceMode !== 'conversation') return
+    const clean = stripMarkdownForTts(text)
+    if (!clean) return
+    if (ttsSentenceCountRef.current >= TTS_MAX_SENTENCES) return
+    ttsSentenceCountRef.current++
+    ttsQueueRef.current.push(clean)
+    drainTtsQueue().catch(console.error)
+  }, [voiceMode, drainTtsQueue])
 
   const stopTts = useCallback((): void => {
     currentAudioRef.current?.pause()
     currentAudioRef.current = null
+    ttsQueueRef.current = []
+    isTtsBusyRef.current = false
+    sentenceBufferRef.current = ''
+    ttsSentenceCountRef.current = 0
   }, [])
+
+  const flushSentenceBuffer = useCallback((force = false): void => {
+    if (voiceMode !== 'conversation') return
+    const buf = sentenceBufferRef.current
+    const parts = buf.split(/(?<=[.!?…])\s+/)
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (parts[i].trim()) enqueueTts(parts[i])
+    }
+    sentenceBufferRef.current = parts[parts.length - 1]
+    if (force && sentenceBufferRef.current.trim()) {
+      enqueueTts(sentenceBufferRef.current)
+      sentenceBufferRef.current = ''
+    }
+  }, [voiceMode, enqueueTts])
 
   useEffect(() => {
     const offToken = window.electronAPI.onToken((token) => {
       if (!streamingIdRef.current) setPendingResponse(false)
       streamingTextRef.current += token
-      const fullText = streamingTextRef.current
 
-      if (voiceMode === 'conversation' && !voiceSpokenRef.current) {
-        const voiceEnd = fullText.indexOf('[/VOCE]')
-        if (voiceEnd !== -1) {
-          const voiceStart = fullText.indexOf('[VOCE]')
-          if (voiceStart !== -1) {
-            const voiceText = fullText.slice(voiceStart + '[VOCE]'.length, voiceEnd).trim()
-            if (voiceText) {
-              voiceSpokenRef.current = true
-              playTts(voiceText).catch(console.error)
-            }
-          }
-        }
-      }
-
-      let displayText: string
-      const voiceEndIdx = fullText.indexOf('[/VOCE]')
-      if (voiceEndIdx !== -1) {
-        displayText = fullText.slice(voiceEndIdx + '[/VOCE]'.length).replace(/^\n+/, '')
-      } else if (fullText.includes('[VOCE]')) {
-        displayText = ''
-      } else {
-        displayText = fullText
+      if (voiceMode === 'conversation') {
+        sentenceBufferRef.current += token
+        flushSentenceBuffer()
       }
 
       setMessages((prev) => {
         if (!streamingIdRef.current) {
           const id = uid()
           streamingIdRef.current = id
-          return [...prev, { id, role: 'assistant', content: displayText, isStreaming: true }]
+          return [...prev, { id, role: 'assistant', content: streamingTextRef.current, isStreaming: true }]
         }
         return prev.map((m) =>
-          m.id === streamingIdRef.current ? { ...m, content: displayText } : m
+          m.id === streamingIdRef.current ? { ...m, content: streamingTextRef.current } : m
         )
       })
     })
@@ -155,29 +198,38 @@ export default function ChatWindow({
           m.id === streamingIdRef.current ? { ...m, isStreaming: false } : m
         )
       )
-      const text = streamingTextRef.current
-      const wasVoiceSpoken = voiceSpokenRef.current
       streamingTextRef.current = ''
       streamingIdRef.current = null
-      voiceSpokenRef.current = false
       setIsRunning(false)
+      onRunningChange?.(false)
       setAgentStatus(null)
       onConversationUpdate()
 
-      if (voiceMode === 'conversation' && text && !wasVoiceSpoken) {
-        playTts(text).catch(console.error)
+      if (voiceMode === 'conversation') {
+        flushSentenceBuffer(true)
       }
+      sentenceBufferRef.current = ''
+      ttsSentenceCountRef.current = 0
     })
 
     const offStatus = window.electronAPI.onStatus((s) => {
       setAgentStatus(s)
-      if (s) setPendingResponse(false) // tool running — hide dots, show status pill
+      if (s) {
+        setPendingResponse(false)
+        if (voiceMode === 'conversation') {
+          stopTts()
+          ttsSentenceCountRef.current = 0
+          enqueueTts('Attendi, sto lavorando...')
+        }
+      }
     })
 
     const offError = window.electronAPI.onError((error) => {
+      stopTts()
       streamingTextRef.current = ''
       streamingIdRef.current = null
       setIsRunning(false)
+      onRunningChange?.(false)
       setPendingResponse(false)
       setAgentStatus(null)
       setMessages((prev) => [
@@ -205,16 +257,16 @@ export default function ChatWindow({
       offImage()
       offStatus()
     }
-  }, [onConversationUpdate, voiceMode, playTts])
+  }, [onConversationUpdate, voiceMode, stopTts, enqueueTts, flushSentenceBuffer])
 
   const sendText = useCallback((text: string): void => {
     if (!text.trim() || isRunning) return
     stopTts()
     setInput('')
     setIsRunning(true)
+    onRunningChange?.(true)
     setPendingResponse(true)
     isUserScrolledUpRef.current = false
-    voiceSpokenRef.current = false
     streamingIdRef.current = null
     streamingTextRef.current = ''
     setMessages((prev) => [...prev, { id: uid(), role: 'user', content: text }])
@@ -359,17 +411,19 @@ export default function ChatWindow({
         </div>
       </div>
 
-      <AssetPanel
-        convId={conversationId}
-        clientId={clientId}
-        sourceFiles={sourceFiles}
-        sourceUrls={sourceUrls}
-        contextSummary={contextSummary}
-        outputFolder={outputFolder}
-        deliverables={deliverables}
-        onContextUpdated={handleContextUpdated}
-        onClientChanged={(id) => setClientId(id ?? undefined)}
-      />
+      {!compact && (
+        <AssetPanel
+          convId={conversationId}
+          clientId={clientId}
+          sourceFiles={sourceFiles}
+          sourceUrls={sourceUrls}
+          contextSummary={contextSummary}
+          outputFolder={outputFolder}
+          deliverables={deliverables}
+          onContextUpdated={handleContextUpdated}
+          onClientChanged={(id) => setClientId(id ?? undefined)}
+        />
+      )}
     </div>
   )
 }

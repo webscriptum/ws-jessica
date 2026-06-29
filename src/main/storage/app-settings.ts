@@ -4,13 +4,24 @@ import { join } from 'path'
 
 export type VoiceMode = 'off' | 'voice-to-text' | 'conversation'
 export type ModelMode = 'sonnet' | 'opus'
+export type MascotPosition = 'bottom-right' | 'bottom-left'
+export type MascotAvatarSize = 'small' | 'medium' | 'large'
 
-interface AppSettings {
+export interface AppSettings {
   voiceMode: VoiceMode
   modelMode: ModelMode
+  mascotMode: boolean
+  mascotPosition: MascotPosition
+  mascotAvatarSize: MascotAvatarSize
 }
 
-const DEFAULTS: AppSettings = { voiceMode: 'off', modelMode: 'sonnet' }
+const DEFAULTS: AppSettings = {
+  voiceMode: 'off',
+  modelMode: 'sonnet',
+  mascotMode: false,
+  mascotPosition: 'bottom-right',
+  mascotAvatarSize: 'medium'
+}
 
 function settingsPath(): string {
   return join(app.getPath('userData'), 'app-settings.json')

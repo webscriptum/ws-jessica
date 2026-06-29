@@ -1,5 +1,7 @@
 export type VoiceMode = 'off' | 'voice-to-text' | 'conversation'
 export type ModelMode = 'sonnet' | 'opus'
+export type MascotPosition = 'bottom-right' | 'bottom-left'
+export type MascotAvatarSize = 'small' | 'medium' | 'large'
 
 export interface ClientBrand {
   primaryColor?: string
@@ -92,10 +94,27 @@ export interface ElectronAPI {
   onDeliverable: (cb: (d: Deliverable) => void) => () => void
   onImage: (cb: (img: { filename: string; base64: string }) => void) => () => void
   onStatus: (cb: (status: string | null) => void) => () => void
+  onClientUpdated: (cb: (clientId: string) => void) => () => void
 
   // Settings
-  getSettings: () => Promise<{ hasApiKey: boolean; hasOpenAiKey: boolean; voiceMode: VoiceMode; modelMode: ModelMode }>
-  saveSettings: (s: { apiKey?: string; openAiKey?: string; voiceMode?: VoiceMode; modelMode?: ModelMode }) => Promise<{ ok: boolean }>
+  getSettings: () => Promise<{
+    hasApiKey: boolean
+    hasOpenAiKey: boolean
+    voiceMode: VoiceMode
+    modelMode: ModelMode
+    mascotMode: boolean
+    mascotPosition: MascotPosition
+    mascotAvatarSize: MascotAvatarSize
+  }>
+  saveSettings: (s: {
+    apiKey?: string
+    openAiKey?: string
+    voiceMode?: VoiceMode
+    modelMode?: ModelMode
+    mascotMode?: boolean
+    mascotPosition?: MascotPosition
+    mascotAvatarSize?: MascotAvatarSize
+  }) => Promise<{ ok: boolean }>
 
   // Version & updater
   getVersion: () => Promise<string>
