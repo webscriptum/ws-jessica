@@ -14,12 +14,10 @@ function createWindow(): void {
 
   if (settings.mascotMode) {
     const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize
-    const ww = 380
-    const wx = settings.mascotPosition === 'bottom-left' ? 0 : sw - ww
     mainWindow = new BrowserWindow({
-      width: ww,
+      width: sw,
       height: sh,
-      x: wx,
+      x: 0,
       y: 0,
       frame: false,
       transparent: true,
@@ -35,6 +33,10 @@ function createWindow(): void {
         preload: join(__dirname, '../preload/index.js'),
         sandbox: false
       }
+    })
+    // Click-through di default — il renderer disattiva/riattiva via IPC
+    mainWindow.webContents.on('did-finish-load', () => {
+      mainWindow?.setIgnoreMouseEvents(true, { forward: true })
     })
   } else {
     mainWindow = new BrowserWindow({
@@ -152,6 +154,11 @@ app.whenReady().then(() => {
   autoUpdater.autoInstallOnAppQuit = true
 
   createWindow()
+
+  // Toggle click-through in mascot mode
+  ipcMain.on('window:setIgnoreMouse', (_e, ignore: boolean) => {
+    mainWindow?.setIgnoreMouseEvents(ignore, { forward: true })
+  })
 
   const win = mainWindow!
   registerSettingsIpc(win)

@@ -90,6 +90,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('client:updated', handler)
   },
 
+  // Mascot: toggle mouse click-through
+  setIgnoreMouse: (ignore: boolean) => ipcRenderer.send('window:setIgnoreMouse', ignore),
+
   // Voice: TTS
   speakText: (text: string) => ipcRenderer.invoke('tts:speak', text),
 

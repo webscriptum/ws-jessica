@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import ChatWindow from './ChatWindow'
 import JessicaAvatarBust from './JessicaAvatarBust'
 import SettingsScreen from './SettingsScreen'
@@ -23,11 +23,25 @@ export default function MascotLayout({
   showSettings
 }: Props): JSX.Element {
   const [isRunning, setIsRunning] = useState(false)
-  const [panelPos, setPanelPos] = useState({ top: 20, left: 10 })
+  const [panelPos, setPanelPos] = useState({
+    top: 60,
+    left: Math.max(0, window.innerWidth - 390)
+  })
   const dragRef = useRef<{ startX: number; startY: number; startTop: number; startLeft: number } | null>(null)
 
   const handleRunningChange = useCallback((running: boolean): void => {
     setIsRunning(running)
+  }, [])
+
+  // Toggle click-through: disattiva quando il mouse è su elementi interattivi
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent): void => {
+      const el = document.elementFromPoint(e.clientX, e.clientY)
+      const isActive = el?.closest('[data-mouse-active]') !== null
+      window.electronAPI.setIgnoreMouse(!isActive)
+    }
+    document.addEventListener('mousemove', handleMouseMove)
+    return () => document.removeEventListener('mousemove', handleMouseMove)
   }, [])
 
   const onDragHandleDown = (e: React.MouseEvent): void => {
@@ -45,7 +59,7 @@ export default function MascotLayout({
       const dy = ev.clientY - dragRef.current.startY
       setPanelPos({
         top: Math.max(0, Math.min(window.innerHeight - 100, dragRef.current.startTop + dy)),
-        left: Math.max(0, Math.min(window.innerWidth - 360, dragRef.current.startLeft + dx))
+        left: Math.max(0, Math.min(window.innerWidth - 365, dragRef.current.startLeft + dx))
       })
     }
 
@@ -66,6 +80,7 @@ export default function MascotLayout({
         className={`mascot-settings-fab ${showSettings ? 'active' : ''}`}
         onClick={onSettingsToggle}
         title="Impostazioni"
+        data-mouse-active
       >
         ⚙
       </button>
@@ -74,6 +89,7 @@ export default function MascotLayout({
       <div
         className="mascot-float-panel"
         style={{ top: panelPos.top, left: panelPos.left }}
+        data-mouse-active
       >
         <div className="mascot-float-handle" onMouseDown={onDragHandleDown}>
           <span className="mascot-title">WS Jessica</span>
@@ -111,7 +127,7 @@ export default function MascotLayout({
       </div>
 
       {/* Avatar fisso in basso */}
-      <div className="mascot-avatar-wrap">
+      <div className="mascot-avatar-wrap" data-mouse-active>
         <JessicaAvatarBust size={avatarSize} state={isRunning ? 'thinking' : 'idle'} />
       </div>
     </div>

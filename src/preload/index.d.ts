@@ -122,6 +122,9 @@ export interface ElectronAPI {
   installUpdate: () => Promise<void>
   onUpdaterStatus: (cb: (s: { status: string; message: string; version?: string }) => void) => () => void
 
+  // Mascot
+  setIgnoreMouse: (ignore: boolean) => void
+
   // Voice
   speakText: (text: string) => Promise<{ ok: boolean; base64?: string; error?: string }>
   transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ ok: boolean; text?: string; error?: string }>

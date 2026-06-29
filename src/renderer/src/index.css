@@ -1374,8 +1374,9 @@ button.asset-section-title:hover {
 
 /* ─── Mascot layout ─── */
 
-/* Mascot window: override body background for full transparency */
-body.is-mascot {
+/* Mascot window: override every background for full transparency */
+body.is-mascot,
+body.is-mascot #root {
   background: transparent !important;
 }
 
@@ -1420,8 +1421,8 @@ body.is-mascot {
 .mascot-float-panel {
   position: absolute;
   width: 360px;
-  min-height: 320px;
-  max-height: 80vh;
+  height: min(620px, 78vh);
+  max-height: 78vh;
   display: flex;
   flex-direction: column;
   background: rgba(8, 18, 16, 0.78);
@@ -1515,14 +1516,24 @@ body.is-mascot {
   overflow-y: auto;
 }
 
-/* Avatar fisso in basso, centrato */
+/* Avatar fisso in basso — posizione dipende da data-mascot-position */
 .mascot-avatar-wrap {
   position: absolute;
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 5;
+  cursor: default;
+}
+body[data-mascot-position="bottom-right"] .mascot-avatar-wrap {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+body[data-mascot-position="bottom-left"] .mascot-avatar-wrap {
+  left: 0;
+  transform: none;
 }
 
 /* ─── Jessica Bust animations ─── */
