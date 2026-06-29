@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import ChatWindow from './ChatWindow'
 import JessicaAvatarBust from './JessicaAvatarBust'
 import SettingsScreen from './SettingsScreen'
@@ -13,6 +13,12 @@ interface Props {
   showSettings: boolean
 }
 
+const AVATAR_HEIGHTS: Record<MascotAvatarSize, number> = {
+  small:  240,
+  medium: 300,
+  large:  360
+}
+
 export default function MascotLayout({
   activeConv,
   onConversationUpdate,
@@ -22,21 +28,53 @@ export default function MascotLayout({
   showSettings
 }: Props): JSX.Element {
   const [isRunning, setIsRunning] = useState(false)
+  const [panelBottom, setPanelBottom] = useState(() => AVATAR_HEIGHTS[avatarSize] + 12)
+  const dragRef = useRef<{ startY: number; startBottom: number } | null>(null)
 
   const handleRunningChange = useCallback((running: boolean): void => {
     setIsRunning(running)
   }, [])
 
+  const onDragHandleDown = (e: React.MouseEvent): void => {
+    e.preventDefault()
+    dragRef.current = { startY: e.clientY, startBottom: panelBottom }
+
+    const onMove = (ev: MouseEvent): void => {
+      if (!dragRef.current) return
+      const delta = dragRef.current.startY - ev.clientY
+      const minBottom = AVATAR_HEIGHTS[avatarSize] + 12
+      const maxBottom = window.innerHeight - 120
+      setPanelBottom(Math.max(minBottom, Math.min(maxBottom, dragRef.current.startBottom + delta)))
+    }
+
+    const onUp = (): void => {
+      dragRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   return (
     <div className="mascot-root">
-      <div className="mascot-spacer" />
+      {/* Settings FAB — sempre visibile */}
+      <button
+        className={`mascot-settings-fab ${showSettings ? 'active' : ''}`}
+        onClick={onSettingsToggle}
+        title="Impostazioni"
+      >
+        ⚙
+      </button>
 
-      <div className="mascot-panel">
-        {/* Header — drag region */}
-        <div className="mascot-header">
-          <div className="mascot-header-drag">
-            <span className="mascot-title">WS Jessica</span>
-          </div>
+      {/* Chat panel floating glass */}
+      <div
+        className="mascot-float-panel"
+        style={{ bottom: panelBottom }}
+      >
+        <div className="mascot-float-handle" onMouseDown={onDragHandleDown}>
+          <span className="mascot-title">WS Jessica</span>
           <div className="mascot-header-actions">
             <button
               className="mascot-icon-btn"
@@ -45,17 +83,9 @@ export default function MascotLayout({
             >
               ✦
             </button>
-            <button
-              className={`mascot-icon-btn ${showSettings ? 'active' : ''}`}
-              title="Impostazioni"
-              onClick={onSettingsToggle}
-            >
-              ⚙
-            </button>
           </div>
         </div>
 
-        {/* Body */}
         <div className="mascot-body">
           {showSettings ? (
             <SettingsScreen />
@@ -78,7 +108,7 @@ export default function MascotLayout({
         </div>
       </div>
 
-      {/* Avatar */}
+      {/* Avatar fisso in basso */}
       <div className="mascot-avatar-wrap">
         <JessicaAvatarBust size={avatarSize} state={isRunning ? 'thinking' : 'idle'} />
       </div>

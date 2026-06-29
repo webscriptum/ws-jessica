@@ -11,6 +11,7 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   isStreaming?: boolean
+  isCompletion?: boolean
   imageBase64?: string
   imageName?: string
 }
@@ -57,6 +58,7 @@ export default function ChatWindow({
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('off')
   const [pendingResponse, setPendingResponse] = useState(false)
   const [agentStatus, setAgentStatus] = useState<string | null>(null)
+  const [runningSeconds, setRunningSeconds] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const messagesListRef = useRef<HTMLDivElement>(null)
   const isUserScrolledUpRef = useRef(false)
@@ -67,6 +69,7 @@ export default function ChatWindow({
   const ttsQueueRef = useRef<string[]>([])
   const isTtsBusyRef = useRef(false)
   const ttsSentenceCountRef = useRef(0)
+  const hadTokensRef = useRef(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const scrollToBottom = useCallback((force = false) => {
@@ -112,6 +115,12 @@ export default function ChatWindow({
   useEffect(() => {
     scrollToBottom()
   }, [messages, scrollToBottom])
+
+  useEffect(() => {
+    if (!isRunning) { setRunningSeconds(0); return }
+    const id = setInterval(() => setRunningSeconds((s) => s + 1), 1000)
+    return () => clearInterval(id)
+  }, [isRunning])
 
   const drainTtsQueue = useCallback(async (): Promise<void> => {
     if (isTtsBusyRef.current) return
@@ -172,7 +181,6 @@ export default function ChatWindow({
 
   useEffect(() => {
     const offToken = window.electronAPI.onToken((token) => {
-      if (!streamingIdRef.current) setPendingResponse(false)
       streamingTextRef.current += token
 
       if (voiceMode === 'conversation') {
@@ -180,26 +188,43 @@ export default function ChatWindow({
         flushSentenceBuffer()
       }
 
-      setMessages((prev) => {
-        if (!streamingIdRef.current) {
-          const id = uid()
-          streamingIdRef.current = id
-          return [...prev, { id, role: 'assistant', content: streamingTextRef.current, isStreaming: true }]
-        }
-        return prev.map((m) =>
-          m.id === streamingIdRef.current ? { ...m, content: streamingTextRef.current } : m
+      if (!streamingIdRef.current) {
+        // Set ref BEFORE setMessages to avoid race with onDone in same microtask
+        setPendingResponse(false)
+        hadTokensRef.current = true
+        const id = uid()
+        streamingIdRef.current = id
+        setMessages((prev) => [
+          ...prev,
+          { id, role: 'assistant', content: streamingTextRef.current, isStreaming: true }
+        ])
+      } else {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === streamingIdRef.current ? { ...m, content: streamingTextRef.current } : m
+          )
         )
-      })
+      }
     })
 
     const offDone = window.electronAPI.onDone(() => {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === streamingIdRef.current ? { ...m, isStreaming: false } : m
-        )
-      )
+      const hadTokens = hadTokensRef.current
+      setMessages((prev) => {
+        // Clear ALL streaming cursors (safety net for any edge-case race)
+        const cleared = prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
+        if (!hadTokens) {
+          return [...cleared, {
+            id: uid(),
+            role: 'assistant' as const,
+            content: '✓ Elaborazione completata.',
+            isCompletion: true
+          }]
+        }
+        return cleared
+      })
       streamingTextRef.current = ''
       streamingIdRef.current = null
+      hadTokensRef.current = false
       setIsRunning(false)
       onRunningChange?.(false)
       setAgentStatus(null)
@@ -266,6 +291,7 @@ export default function ChatWindow({
     setIsRunning(true)
     onRunningChange?.(true)
     setPendingResponse(true)
+    hadTokensRef.current = false
     isUserScrolledUpRef.current = false
     streamingIdRef.current = null
     streamingTextRef.current = ''
@@ -347,18 +373,23 @@ export default function ChatWindow({
               </div>
             )
           )}
-          {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
-          ))}
+          {messages.map((m) =>
+            m.isCompletion ? (
+              <div key={m.id} className="completion-note">{m.content}</div>
+            ) : (
+              <MessageBubble key={m.id} message={m} />
+            )
+          )}
           <div ref={bottomRef} />
         </div>
 
-        {isRunning && (agentStatus || pendingResponse) && (
+        {isRunning && (
           <div className="agent-status-bar">
             <span className="agent-status-spinner" />
             <span className="agent-status-text">
-              {agentStatus ?? 'Sto pensando…'}
+              {agentStatus ?? (pendingResponse ? 'Sto pensando…' : 'Elaboro…')}
             </span>
+            <span className="agent-status-time">{runningSeconds}s</span>
           </div>
         )}
 

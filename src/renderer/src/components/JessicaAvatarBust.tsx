@@ -26,120 +26,161 @@ export default function JessicaAvatarBust({ size = 'medium', state = 'idle' }: P
     >
       <defs>
         <linearGradient id="jb-head-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#2E6B65" />
-          <stop offset="100%" stopColor="#1A3E3C" />
+          <stop offset="0%" stopColor="#326862" />
+          <stop offset="100%" stopColor="#1C4040" />
+        </linearGradient>
+        <linearGradient id="jb-hair-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#245550" />
+          <stop offset="100%" stopColor="#142E2C" />
         </linearGradient>
         <linearGradient id="jb-chest-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#243530" />
-          <stop offset="100%" stopColor="#141E1D" />
+          <stop offset="0%" stopColor="#1E3230" />
+          <stop offset="100%" stopColor="#0E1C1B" />
         </linearGradient>
-        <linearGradient id="jb-visor-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#0A1A1A" stopOpacity="0.7" />
-          <stop offset="100%" stopColor="#061212" stopOpacity="0.9" />
-        </linearGradient>
-        <filter id="jb-eye-glow" x="-60%" y="-60%" width="220%" height="220%">
-          <feGaussianBlur stdDeviation="3" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
+        <filter id="jb-eye-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2.5" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
         <filter id="jb-led-glow" x="-80%" y="-80%" width="260%" height="260%">
-          <feGaussianBlur stdDeviation="2.5" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
+          <feGaussianBlur stdDeviation="2" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+        <filter id="jb-soft-glow" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="4" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
       </defs>
 
-      {/* ── Antennae ── */}
+      {/* ── Hair panels (robot-style, left + right + dome) ── */}
+      <g className="jb-hair">
+        {/* Left hair panel */}
+        <rect x="22" y="28" width="22" height="58" rx="11" fill="url(#jb-hair-grad)" />
+        <rect x="25" y="32" width="8" height="22" rx="4" fill="rgba(68,184,173,0.15)" />
+        <circle cx="33" cy="70" r="3" fill="rgba(68,184,173,0.4)" />
+
+        {/* Right hair panel */}
+        <rect x="156" y="28" width="22" height="58" rx="11" fill="url(#jb-hair-grad)" />
+        <rect x="167" y="32" width="8" height="22" rx="4" fill="rgba(68,184,173,0.15)" />
+        <circle cx="167" cy="70" r="3" fill="rgba(68,184,173,0.4)" />
+
+        {/* Top dome */}
+        <ellipse cx="100" cy="24" rx="48" ry="18" fill="url(#jb-hair-grad)" />
+        <ellipse cx="100" cy="20" rx="34" ry="8" fill="rgba(68,184,173,0.12)" />
+      </g>
+
+      {/* ── Antennas ── */}
       <g className="jb-antenna-left">
-        <line x1="74" y1="38" x2="62" y2="10" stroke="#2E6B65" strokeWidth="3" strokeLinecap="round" />
-        <circle cx="62" cy="8" r="5" fill="#44B8AD" className="jb-led" filter="url(#jb-led-glow)" />
+        <line x1="76" y1="30" x2="64" y2="6" stroke="#245550" strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx="64" cy="5" r="4.5" fill="#44B8AD" className="jb-led" filter="url(#jb-led-glow)" />
       </g>
       <g className="jb-antenna-right">
-        <line x1="126" y1="38" x2="138" y2="10" stroke="#2E6B65" strokeWidth="3" strokeLinecap="round" />
-        <circle cx="138" cy="8" r="5" fill="#44B8AD" className="jb-led jb-led-2" filter="url(#jb-led-glow)" />
+        <line x1="124" y1="30" x2="136" y2="6" stroke="#245550" strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx="136" cy="5" r="4.5" fill="#44B8AD" className="jb-led jb-led-2" filter="url(#jb-led-glow)" />
       </g>
 
-      {/* ── Head ── */}
+      {/* ── Head (oval, feminine) ── */}
       <g className="jb-head">
-        {/* Ear nubs */}
-        <rect x="25" y="72" width="15" height="28" rx="7" fill="url(#jb-head-grad)" />
-        <rect x="160" y="72" width="15" height="28" rx="7" fill="url(#jb-head-grad)" />
+        {/* Main face shape */}
+        <rect x="36" y="26" width="128" height="140" rx="48" fill="url(#jb-head-grad)" />
 
-        {/* Main head shape */}
-        <rect x="38" y="28" width="124" height="118" rx="34" fill="url(#jb-head-grad)" />
+        {/* Subtle face highlight */}
+        <ellipse cx="100" cy="70" rx="52" ry="40" fill="rgba(255,255,255,0.04)" />
 
-        {/* Visor band */}
-        <rect x="38" y="56" width="124" height="42" fill="url(#jb-visor-grad)" />
-        <rect x="38" y="56" width="124" height="1.5" fill="rgba(68,184,173,0.25)" />
-        <rect x="38" y="97" width="124" height="1.5" fill="rgba(68,184,173,0.15)" />
-
-        {/* Left eye */}
+        {/* ── Left eye ── */}
         <g className="jb-eye-left" filter="url(#jb-eye-glow)">
-          <ellipse cx="80" cy="76" rx="14" ry="12" fill="rgba(255,255,255,0.92)" />
-          <ellipse cx="80" cy="76" rx="6" ry="6" fill="#44B8AD" />
-          <ellipse cx="77" cy="73" rx="2" ry="2" fill="rgba(255,255,255,0.6)" />
+          {/* Sclera */}
+          <ellipse cx="76" cy="91" rx="19" ry="17" fill="rgba(240,255,254,0.95)" />
+          {/* Iris */}
+          <ellipse cx="76" cy="93" rx="11" ry="13" fill="#3AADA3" />
+          {/* Pupil */}
+          <ellipse cx="76" cy="93" rx="6" ry="7" fill="#051010" />
+          {/* Shine highlights */}
+          <circle cx="70" cy="86" r="4" fill="rgba(255,255,255,0.92)" />
+          <circle cx="82" cy="100" r="1.8" fill="rgba(255,255,255,0.5)" />
         </g>
 
-        {/* Right eye */}
+        {/* ── Right eye ── */}
         <g className="jb-eye-right" filter="url(#jb-eye-glow)">
-          <ellipse cx="120" cy="76" rx="14" ry="12" fill="rgba(255,255,255,0.92)" />
-          <ellipse cx="120" cy="76" rx="6" ry="6" fill="#44B8AD" />
-          <ellipse cx="117" cy="73" rx="2" ry="2" fill="rgba(255,255,255,0.6)" />
+          <ellipse cx="124" cy="91" rx="19" ry="17" fill="rgba(240,255,254,0.95)" />
+          <ellipse cx="124" cy="93" rx="11" ry="13" fill="#3AADA3" />
+          <ellipse cx="124" cy="93" rx="6" ry="7" fill="#051010" />
+          <circle cx="118" cy="86" r="4" fill="rgba(255,255,255,0.92)" />
+          <circle cx="130" cy="100" r="1.8" fill="rgba(255,255,255,0.5)" />
         </g>
 
-        {/* Mouth LED bar */}
-        <g className="jb-mouth">
-          <rect className="jb-mouth-seg jb-ms-1" x="70"  y="115" width="9" height="7" rx="2.5" fill="#44B8AD" filter="url(#jb-led-glow)" />
-          <rect className="jb-mouth-seg jb-ms-2" x="83"  y="115" width="9" height="7" rx="2.5" fill="#44B8AD" filter="url(#jb-led-glow)" />
-          <rect className="jb-mouth-seg jb-ms-3" x="96"  y="115" width="9" height="7" rx="2.5" fill="#44B8AD" filter="url(#jb-led-glow)" />
-          <rect className="jb-mouth-seg jb-ms-4" x="109" y="115" width="9" height="7" rx="2.5" fill="#44B8AD" filter="url(#jb-led-glow)" />
-          <rect className="jb-mouth-seg jb-ms-5" x="122" y="115" width="9" height="7" rx="2.5" fill="#44B8AD" filter="url(#jb-led-glow)" />
-        </g>
+        {/* ── Eyelashes (arcs above eyes) ── */}
+        <path
+          className="jb-lash-left"
+          d="M 55 79 C 68 68 88 68 99 79"
+          stroke="#1A4A44"
+          strokeWidth="4"
+          strokeLinecap="round"
+          fill="none"
+        />
+        <path
+          className="jb-lash-right"
+          d="M 101 79 C 112 68 132 68 145 79"
+          stroke="#1A4A44"
+          strokeWidth="4"
+          strokeLinecap="round"
+          fill="none"
+        />
 
-        {/* Forehead detail line */}
-        <line x1="80" y1="38" x2="120" y2="38" stroke="rgba(68,184,173,0.2)" strokeWidth="1.5" strokeLinecap="round" />
+        {/* ── Cheek blush ── */}
+        <ellipse cx="52" cy="110" rx="15" ry="9" fill="rgba(255,130,110,0.08)" />
+        <ellipse cx="148" cy="110" rx="15" ry="9" fill="rgba(255,130,110,0.08)" />
 
-        {/* Ear detail */}
-        <circle cx="32" cy="86" r="3" fill="rgba(68,184,173,0.3)" />
-        <circle cx="168" cy="86" r="3" fill="rgba(68,184,173,0.3)" />
+        {/* ── Nose (minimal dot) ── */}
+        <circle cx="100" cy="118" r="2.5" fill="rgba(68,184,173,0.22)" />
+
+        {/* ── Mouth: curved smile + 3 LED dots ── */}
+        <path
+          d="M 80 134 Q 100 144 120 134"
+          stroke="rgba(68,184,173,0.45)"
+          strokeWidth="2"
+          strokeLinecap="round"
+          fill="none"
+        />
+        <circle className="jb-mouth-seg jb-ms-1" cx="80"  cy="134" r="3.5" fill="#44B8AD" filter="url(#jb-led-glow)" />
+        <circle className="jb-mouth-seg jb-ms-2" cx="100" cy="140" r="3.5" fill="#44B8AD" filter="url(#jb-led-glow)" />
+        <circle className="jb-mouth-seg jb-ms-3" cx="120" cy="134" r="3.5" fill="#44B8AD" filter="url(#jb-led-glow)" />
+
+        {/* ── Forehead tech line ── */}
+        <line x1="82" y1="36" x2="118" y2="36" stroke="rgba(68,184,173,0.18)" strokeWidth="1.5" strokeLinecap="round" />
       </g>
 
       {/* ── Neck ── */}
-      <rect x="84" y="146" width="32" height="24" rx="8" fill="#1D3532" />
-      <line x1="88" y1="154" x2="112" y2="154" stroke="rgba(68,184,173,0.35)" strokeWidth="1.5" />
-      <line x1="88" y1="161" x2="112" y2="161" stroke="rgba(68,184,173,0.2)" strokeWidth="1.5" />
+      <rect x="84" y="166" width="32" height="22" rx="8" fill="#183030" />
+      <line x1="88" y1="174" x2="112" y2="174" stroke="rgba(68,184,173,0.3)" strokeWidth="1.5" />
+      <line x1="88" y1="181" x2="112" y2="181" stroke="rgba(68,184,173,0.2)" strokeWidth="1.5" />
 
       {/* ── Chest ── */}
-      <rect x="22" y="168" width="156" height="128" rx="22" fill="url(#jb-chest-grad)" />
+      <rect x="20" y="186" width="160" height="112" rx="22" fill="url(#jb-chest-grad)" />
 
-      {/* Shoulder bolts */}
-      <circle cx="43" cy="188" r="8" fill="#0F1D1C" />
-      <circle cx="43" cy="188" r="4" fill="#1D3532" />
-      <circle cx="157" cy="188" r="8" fill="#0F1D1C" />
-      <circle cx="157" cy="188" r="4" fill="#1D3532" />
+      {/* Shoulder detail */}
+      <circle cx="40" cy="206" r="8" fill="#0A1818" />
+      <circle cx="40" cy="206" r="4" fill="#162828" />
+      <circle cx="160" cy="206" r="8" fill="#0A1818" />
+      <circle cx="160" cy="206" r="4" fill="#162828" />
 
       {/* CPU panel */}
-      <rect x="55" y="182" width="90" height="68" rx="10" fill="rgba(0,0,0,0.35)" />
-      <rect x="55" y="182" width="90" height="68" rx="10" fill="none" stroke="rgba(68,184,173,0.15)" strokeWidth="1" />
+      <rect x="54" y="200" width="92" height="62" rx="10" fill="rgba(0,0,0,0.3)" />
+      <rect x="54" y="200" width="92" height="62" rx="10" fill="none" stroke="rgba(68,184,173,0.12)" strokeWidth="1" />
 
       {/* Circuit lines */}
-      <line x1="68" y1="198" x2="132" y2="198" stroke="rgba(68,184,173,0.5)" strokeWidth="1" />
-      <line x1="68" y1="210" x2="118" y2="210" stroke="rgba(68,184,173,0.35)" strokeWidth="1" />
-      <line x1="68" y1="222" x2="125" y2="222" stroke="rgba(68,184,173,0.35)" strokeWidth="1" />
-      <circle cx="132" cy="210" r="2.5" fill="rgba(68,184,173,0.4)" />
-      <circle cx="118" cy="222" r="2.5" fill="rgba(68,184,173,0.4)" />
+      <line x1="67" y1="216" x2="133" y2="216" stroke="rgba(68,184,173,0.45)" strokeWidth="1" />
+      <line x1="67" y1="228" x2="122" y2="228" stroke="rgba(68,184,173,0.3)" strokeWidth="1" />
+      <line x1="67" y1="240" x2="128" y2="240" stroke="rgba(68,184,173,0.3)" strokeWidth="1" />
+      <circle cx="133" cy="228" r="2" fill="rgba(68,184,173,0.35)" />
+      <circle cx="122" cy="240" r="2" fill="rgba(68,184,173,0.35)" />
 
       {/* Status LEDs */}
-      <circle className="jb-led jb-chest-led-1" cx="76"  cy="238" r="5.5" fill="#44B8AD" filter="url(#jb-led-glow)" />
-      <circle className="jb-led jb-chest-led-2" cx="100" cy="238" r="5.5" fill="#44B8AD" filter="url(#jb-led-glow)" />
-      <circle className="jb-led jb-chest-led-3" cx="124" cy="238" r="5.5" fill="#44B8AD" filter="url(#jb-led-glow)" />
+      <circle className="jb-led jb-chest-led-1" cx="74"  cy="254" r="5" fill="#44B8AD" filter="url(#jb-led-glow)" />
+      <circle className="jb-led jb-chest-led-2" cx="100" cy="254" r="5" fill="#44B8AD" filter="url(#jb-led-glow)" />
+      <circle className="jb-led jb-chest-led-3" cx="126" cy="254" r="5" fill="#44B8AD" filter="url(#jb-led-glow)" />
 
-      {/* Chest border highlight */}
-      <rect x="22" y="168" width="156" height="128" rx="22" fill="none" stroke="rgba(68,184,173,0.12)" strokeWidth="1.5" />
+      {/* Chest border */}
+      <rect x="20" y="186" width="160" height="112" rx="22" fill="none" stroke="rgba(68,184,173,0.1)" strokeWidth="1.5" />
     </svg>
   )
 }
