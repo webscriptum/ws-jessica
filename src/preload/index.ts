@@ -1,5 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+// Apply is-mascot before React mounts to prevent the dark-background flash
+if (process.argv.includes('--jessica-mascot')) {
+  const posArg = process.argv.find((a) => a.startsWith('--jessica-position='))
+  const position = posArg?.split('=')[1] ?? 'right'
+  document.addEventListener('DOMContentLoaded', () => {
+    document.documentElement.classList.add('is-mascot')
+    document.body.classList.add('is-mascot')
+    document.body.dataset.mascotPosition = position
+  })
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   // Conversations
   listConversations: () => ipcRenderer.invoke('conversations:list'),

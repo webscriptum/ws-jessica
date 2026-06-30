@@ -23,10 +23,6 @@ export default function App(): JSX.Element {
     window.electronAPI.getSettings().then((s) => {
       setMascotMode(s.mascotMode)
       setMascotAvatarSize(s.mascotAvatarSize)
-      if (s.mascotMode) {
-        document.body.classList.add('is-mascot')
-        document.body.dataset.mascotPosition = s.mascotPosition
-      }
     })
   }, [])
 

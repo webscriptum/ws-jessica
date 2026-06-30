@@ -31,7 +31,11 @@ function createWindow(): void {
       backgroundColor: '#00000000',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
-        sandbox: false
+        sandbox: false,
+        additionalArguments: [
+          '--jessica-mascot',
+          `--jessica-position=${settings.mascotPosition ?? 'right'}`
+        ]
       }
     })
     // Click-through di default — il renderer disattiva/riattiva via IPC

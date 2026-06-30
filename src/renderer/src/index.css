@@ -1375,6 +1375,7 @@ button.asset-section-title:hover {
 /* ─── Mascot layout ─── */
 
 /* Mascot window: override every background for full transparency */
+html.is-mascot,
 body.is-mascot,
 body.is-mascot #root {
   background: transparent !important;
