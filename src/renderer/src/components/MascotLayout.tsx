@@ -27,7 +27,9 @@ export default function MascotLayout({
     top: 60,
     left: Math.max(0, window.innerWidth - 390)
   })
+  const [panelSize, setPanelSize] = useState({ width: 360, height: 620 })
   const dragRef = useRef<{ startX: number; startY: number; startTop: number; startLeft: number } | null>(null)
+  const resizeRef = useRef<{ startX: number; startY: number; startW: number; startH: number } | null>(null)
 
   const handleRunningChange = useCallback((running: boolean): void => {
     setIsRunning(running)
@@ -73,6 +75,34 @@ export default function MascotLayout({
     window.addEventListener('mouseup', onUp)
   }
 
+  const onResizeHandleDown = (e: React.MouseEvent): void => {
+    e.preventDefault()
+    e.stopPropagation()
+    resizeRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startW: panelSize.width,
+      startH: panelSize.height
+    }
+
+    const onMove = (ev: MouseEvent): void => {
+      if (!resizeRef.current) return
+      setPanelSize({
+        width: Math.max(280, Math.min(window.innerWidth * 0.9, resizeRef.current.startW + ev.clientX - resizeRef.current.startX)),
+        height: Math.max(320, Math.min(window.innerHeight * 0.95, resizeRef.current.startH + ev.clientY - resizeRef.current.startY))
+      })
+    }
+
+    const onUp = (): void => {
+      resizeRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   return (
     <div className="mascot-root">
       {/* Settings FAB — sempre visibile */}
@@ -88,7 +118,7 @@ export default function MascotLayout({
       {/* Chat panel floating glass */}
       <div
         className="mascot-float-panel"
-        style={{ top: panelPos.top, left: panelPos.left }}
+        style={{ top: panelPos.top, left: panelPos.left, width: panelSize.width, height: panelSize.height }}
         data-mouse-active
       >
         <div className="mascot-float-handle" onMouseDown={onDragHandleDown}>
@@ -112,7 +142,7 @@ export default function MascotLayout({
               key={activeConv.id}
               conversationId={activeConv.id}
               onConversationUpdate={onConversationUpdate}
-              compact={true}
+              compact={panelSize.width < 520}
               onRunningChange={handleRunningChange}
             />
           ) : (
@@ -124,6 +154,7 @@ export default function MascotLayout({
             </div>
           )}
         </div>
+        <div className="mascot-resize-handle" onMouseDown={onResizeHandleDown} data-mouse-active />
       </div>
 
       {/* Avatar fisso in basso */}

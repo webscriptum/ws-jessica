@@ -1418,12 +1418,11 @@ body.is-mascot #root {
   background: var(--accent-dim);
 }
 
-/* Chat panel — freely draggable glass card */
+/* Chat panel — freely draggable + resizable glass card */
 .mascot-float-panel {
   position: absolute;
-  width: 360px;
-  height: min(620px, 78vh);
-  max-height: 78vh;
+  min-width: 280px;
+  min-height: 320px;
   display: flex;
   flex-direction: column;
   background: rgba(8, 18, 16, 0.78);
@@ -1436,6 +1435,23 @@ body.is-mascot #root {
     inset 0 1px 0 rgba(68, 184, 173, 0.12);
   overflow: hidden;
   z-index: 10;
+}
+
+/* Resize handle — bottom-right corner */
+.mascot-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize;
+  z-index: 20;
+  border-radius: 0 0 14px 0;
+  background: linear-gradient(135deg, transparent 50%, rgba(68, 184, 173, 0.30) 50%);
+  transition: background 0.15s;
+}
+.mascot-resize-handle:hover {
+  background: linear-gradient(135deg, transparent 50%, rgba(68, 184, 173, 0.65) 50%);
 }
 
 /* Drag handle */
