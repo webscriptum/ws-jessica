@@ -236,6 +236,18 @@ export default function SettingsScreen(): JSX.Element {
           {saved && <span className="settings-save-feedback">✓ Salvato</span>}
         </div>
 
+        {/* ── Chiudi app (solo mascot mode) ── */}
+        {mascotMode && (
+          <div className="settings-card" style={{ borderColor: 'rgba(180,50,50,0.25)' }}>
+            <button
+              className="btn-danger"
+              onClick={() => window.electronAPI.quitApp()}
+            >
+              Chiudi app
+            </button>
+          </div>
+        )}
+
         {/* ── Versione ── */}
         <div className="settings-card">
           <div className="settings-card-title">Versione</div>

@@ -1019,6 +1019,23 @@ button.asset-section-title:hover {
 .btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
+.btn-danger {
+  background: rgba(180, 50, 50, 0.18);
+  border: 1px solid rgba(180, 50, 50, 0.40);
+  color: #E07070;
+  border-radius: 8px;
+  padding: 8px 18px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s;
+  width: 100%;
+}
+.btn-danger:hover {
+  background: rgba(180, 50, 50, 0.32);
+  border-color: rgba(180, 50, 50, 0.70);
+}
+
 .btn-cancel {
   padding: 7px 16px;
   border: 1px solid var(--danger);

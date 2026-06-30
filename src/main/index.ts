@@ -172,6 +172,8 @@ app.whenReady().then(() => {
   registerUpdaterIpc()
   setupAutoUpdater()
 
+  ipcMain.handle('app:quit', () => app.quit())
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

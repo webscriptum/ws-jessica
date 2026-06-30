@@ -125,6 +125,9 @@ export interface ElectronAPI {
   // Mascot
   setIgnoreMouse: (ignore: boolean) => void
 
+  // App lifecycle
+  quitApp: () => Promise<void>
+
   // Voice
   speakText: (text: string) => Promise<{ ok: boolean; base64?: string; error?: string }>
   transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ ok: boolean; text?: string; error?: string }>
