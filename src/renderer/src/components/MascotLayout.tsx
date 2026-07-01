@@ -23,6 +23,8 @@ export default function MascotLayout({
   showSettings
 }: Props): JSX.Element {
   const [isRunning, setIsRunning] = useState(false)
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
+  const avatarMenuRef = useRef<HTMLDivElement>(null)
   const [panelPos, setPanelPos] = useState({
     top: 60,
     left: Math.max(0, window.innerWidth - 390)
@@ -34,6 +36,18 @@ export default function MascotLayout({
   const handleRunningChange = useCallback((running: boolean): void => {
     setIsRunning(running)
   }, [])
+
+  // Close avatar menu when clicking outside
+  useEffect(() => {
+    if (!avatarMenuOpen) return
+    const handler = (e: MouseEvent): void => {
+      if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target as Node)) {
+        setAvatarMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [avatarMenuOpen])
 
   // Toggle click-through: disattiva quando il mouse è su elementi interattivi
   useEffect(() => {
@@ -105,15 +119,6 @@ export default function MascotLayout({
 
   return (
     <div className="mascot-root">
-      {/* Settings FAB — sempre visibile */}
-      <button
-        className={`mascot-settings-fab ${showSettings ? 'active' : ''}`}
-        onClick={onSettingsToggle}
-        title="Impostazioni"
-        data-mouse-active
-      >
-        ⚙
-      </button>
 
       {/* Chat panel floating glass */}
       <div
@@ -157,9 +162,44 @@ export default function MascotLayout({
         <div className="mascot-resize-handle" onMouseDown={onResizeHandleDown} data-mouse-active />
       </div>
 
-      {/* Avatar fisso in basso */}
-      <div className="mascot-avatar-wrap" data-mouse-active>
-        <JessicaGirlCSS size={avatarSize} state={isRunning ? 'thinking' : 'idle'} />
+      {/* Avatar — click to open quick-actions */}
+      <div className="mascot-avatar-wrap" data-mouse-active ref={avatarMenuRef}>
+        {avatarMenuOpen && (
+          <div className="mascot-avatar-menu">
+            <div className="mascot-avatar-menu-greeting">Cosa devo fare?</div>
+            <div className="mascot-avatar-menu-actions">
+              <button
+                className="mascot-avatar-action"
+                onClick={() => { onNewChat(); setAvatarMenuOpen(false) }}
+              >
+                <span className="mascot-avatar-action-icon">✦</span>
+                Nuova chat
+              </button>
+              <button
+                className={`mascot-avatar-action ${showSettings ? 'is-active' : ''}`}
+                onClick={() => { onSettingsToggle(); setAvatarMenuOpen(false) }}
+              >
+                <span className="mascot-avatar-action-icon">⚙</span>
+                Impostazioni
+              </button>
+              <button
+                className="mascot-avatar-action mascot-avatar-action--danger"
+                onClick={() => window.electronAPI.quitApp()}
+              >
+                <span className="mascot-avatar-action-icon">✕</span>
+                Chiudi Jessica
+              </button>
+            </div>
+            <div className="mascot-avatar-menu-tail" />
+          </div>
+        )}
+        <div
+          className="mascot-avatar-click"
+          onClick={() => setAvatarMenuOpen(v => !v)}
+          title="Cosa devo fare?"
+        >
+          <JessicaGirlCSS size={avatarSize} state={isRunning ? 'thinking' : 'idle'} />
+        </div>
       </div>
     </div>
   )

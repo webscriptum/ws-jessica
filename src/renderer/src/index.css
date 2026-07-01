@@ -1178,6 +1178,9 @@ button.asset-section-title:hover {
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .voice-seg-desc {
@@ -1406,28 +1409,7 @@ body.is-mascot #root {
   overflow: hidden;
 }
 
-/* Settings FAB — sempre visibile in alto a destra */
-.mascot-settings-fab {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1px solid rgba(68, 184, 173, 0.3);
-  background: rgba(18, 18, 16, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: var(--text-muted);
-  font-size: 16px;
-  cursor: pointer;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-
+/* .mascot-settings-fab removed — settings now accessible via avatar click menu */
 .mascot-settings-fab:hover,
 .mascot-settings-fab.active {
   color: var(--accent);
@@ -1550,6 +1532,10 @@ body.is-mascot #root {
   overflow-y: auto;
 }
 
+.mascot-body .settings-inner {
+  padding: 20px;
+}
+
 /* Avatar fisso in basso — posizione dipende da data-mascot-position */
 .mascot-avatar-wrap {
   position: absolute;
@@ -1568,6 +1554,101 @@ body[data-mascot-position="bottom-right"] .mascot-avatar-wrap {
 body[data-mascot-position="bottom-left"] .mascot-avatar-wrap {
   left: 0;
   transform: none;
+}
+
+/* Click area: cursor pointer on the girl */
+.mascot-avatar-click {
+  cursor: pointer;
+  display: block;
+}
+
+/* Quick-actions popup (appears above avatar on click) */
+.mascot-avatar-menu {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 22, 20, 0.94);
+  border: 1px solid rgba(68, 184, 173, 0.30);
+  border-radius: 14px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  padding: 14px;
+  min-width: 190px;
+  box-shadow: 0 8px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(68,184,173,0.06);
+  z-index: 20;
+  animation: mascot-menu-in 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes mascot-menu-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.94); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0)     scale(1); }
+}
+
+/* Speech-bubble tail */
+.mascot-avatar-menu-tail {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 8px;
+  background: rgba(10, 22, 20, 0.94);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  border-top: 1px solid rgba(68, 184, 173, 0.30);
+}
+
+.mascot-avatar-menu-greeting {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  text-align: center;
+  margin-bottom: 10px;
+  letter-spacing: 0.02em;
+}
+
+.mascot-avatar-menu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mascot-avatar-action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.13s, color 0.13s;
+  text-align: left;
+}
+
+.mascot-avatar-action:hover {
+  background: rgba(68, 184, 173, 0.10);
+  color: var(--accent);
+}
+
+.mascot-avatar-action.is-active {
+  color: var(--accent);
+}
+
+.mascot-avatar-action--danger:hover {
+  background: rgba(224, 85, 85, 0.10);
+  color: var(--danger);
+}
+
+.mascot-avatar-action-icon {
+  font-size: 15px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 /* ─── Jessica Bust animations ─── */
@@ -1720,3 +1801,109 @@ body[data-mascot-position="bottom-left"] .mascot-avatar-wrap {
   0%,49% { opacity: 1; }
   50%,100% { opacity: 0.2; }
 }
+
+/* ─── Jessica Avatar Photo ─── */
+
+.jap-root {
+  position: relative;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.jap-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* glow ring — absolute overlay, inset 0 */
+.jap-glow-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  transition: box-shadow 0.4s ease;
+}
+
+/* waveform strip — gradient fade at bottom */
+.jap-waveform {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 5px;
+  padding-bottom: 10px;
+  background: linear-gradient(to top, rgba(6, 14, 12, 0.88) 0%, transparent 100%);
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.jap-bar {
+  width: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ── IDLE: breathing ── */
+
+.jap--idle .jap-photo {
+  animation: jap-breathe 3.6s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+.jap--idle .jap-glow-ring {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(68, 184, 173, 0.18),
+    0 0 18px 4px rgba(68, 184, 173, 0.10);
+}
+
+/* ── SPEAKING: halo + waveform ── */
+
+.jap--speaking .jap-glow-ring {
+  animation: jap-halo-pulse 1.5s ease-in-out infinite;
+}
+
+.jap--speaking .jap-waveform {
+  opacity: 1;
+}
+
+/* keyframes */
+
+@keyframes jap-breathe {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.022); }
+}
+
+@keyframes jap-halo-pulse {
+  0%, 100% {
+    box-shadow:
+      inset 0 0 0 2px rgba(68, 184, 173, 0.55),
+      0 0 22px 6px rgba(68, 184, 173, 0.32),
+      0 0 55px 14px rgba(68, 184, 173, 0.12);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 3px rgba(91, 203, 192, 0.85),
+      0 0 38px 12px rgba(68, 184, 173, 0.52),
+      0 0 85px 24px rgba(68, 184, 173, 0.20);
+  }
+}
+
+@keyframes jap-wave-sm { from { height: 4px; } to { height: 13px; } }
+@keyframes jap-wave-md { from { height: 4px; } to { height: 22px; } }
+@keyframes jap-wave-lg { from { height: 4px; } to { height: 31px; } }
+@keyframes jap-wave-xl { from { height: 4px; } to { height: 40px; } }
