@@ -1,6 +1,6 @@
 {
   "name": "ws-jessica",
-  "version": "0.5.9",
+  "version": "0.6.0",
   "description": "Agente AI per agenzia creativa - Webscriptum",
   "main": "./out/main/index.js",
   "scripts": {
@@ -32,6 +32,7 @@
     "electron-vite": "^2.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sharp": "^0.35.2",
     "typescript": "^5.5.4",
     "vite": "^5.4.6"
   }
