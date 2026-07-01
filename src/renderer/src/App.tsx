@@ -107,15 +107,22 @@ export default function App(): JSX.Element {
     }
   }, [activeConv, refreshConversations])
 
+  const handleSwitchToWindowMode = async (): Promise<void> => {
+    await window.electronAPI.saveSettings({ mascotMode: false })
+  }
+
   if (mascotMode) {
     return (
       <MascotLayout
         activeConv={activeConv}
+        conversations={conversations}
+        onSelectConversation={handleSelectConversation}
         onConversationUpdate={handleConversationUpdate}
         onNewChat={handleNewChat}
         avatarSize={mascotAvatarSize}
         onSettingsToggle={() => setView((v) => (v === 'settings' ? 'chat' : 'settings'))}
         showSettings={view === 'settings'}
+        onSwitchToWindowMode={handleSwitchToWindowMode}
       />
     )
   }

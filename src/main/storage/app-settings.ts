@@ -18,7 +18,7 @@ export interface AppSettings {
 const DEFAULTS: AppSettings = {
   voiceMode: 'off',
   modelMode: 'sonnet',
-  mascotMode: false,
+  mascotMode: true,
   mascotPosition: 'bottom-right',
   mascotAvatarSize: 'medium'
 }

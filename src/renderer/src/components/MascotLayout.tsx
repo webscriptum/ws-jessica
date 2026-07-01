@@ -2,34 +2,41 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import ChatWindow from './ChatWindow'
 import JessicaGirlCSS from './JessicaGirlCSS'
 import SettingsScreen from './SettingsScreen'
-import type { Conversation, MascotAvatarSize } from '../../../preload/index.d'
+import type { Conversation, ConversationSummary, MascotAvatarSize } from '../../../preload/index.d'
 
 interface Props {
   activeConv: Conversation | null
+  conversations: ConversationSummary[]
+  onSelectConversation: (id: string) => void
   onConversationUpdate: () => void
   onNewChat: () => void
   avatarSize: MascotAvatarSize
   onSettingsToggle: () => void
   showSettings: boolean
+  onSwitchToWindowMode: () => void
 }
 
 
 export default function MascotLayout({
   activeConv,
+  conversations,
+  onSelectConversation,
   onConversationUpdate,
   onNewChat,
   avatarSize,
   onSettingsToggle,
-  showSettings
+  showSettings,
+  onSwitchToWindowMode
 }: Props): JSX.Element {
   const [isRunning, setIsRunning] = useState(false)
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
   const avatarMenuRef = useRef<HTMLDivElement>(null)
   const [panelPos, setPanelPos] = useState({
     top: 60,
-    left: Math.max(0, window.innerWidth - 390)
+    left: Math.max(0, window.innerWidth - 670)
   })
-  const [panelSize, setPanelSize] = useState({ width: 360, height: 620 })
+  const [panelSize, setPanelSize] = useState({ width: 640, height: 680 })
   const dragRef = useRef<{ startX: number; startY: number; startTop: number; startLeft: number } | null>(null)
   const resizeRef = useRef<{ startX: number; startY: number; startW: number; startH: number } | null>(null)
 
@@ -121,66 +128,103 @@ export default function MascotLayout({
     <div className="mascot-root">
 
       {/* Chat panel floating glass */}
-      <div
-        className="mascot-float-panel"
-        style={{ top: panelPos.top, left: panelPos.left, width: panelSize.width, height: panelSize.height }}
-        data-mouse-active
-      >
-        <div className="mascot-float-handle" onMouseDown={onDragHandleDown}>
-          <span className="mascot-title">WS Jessica</span>
-          <div className="mascot-header-actions">
-            <button
-              className="mascot-icon-btn"
-              title="Nuova chat"
-              onClick={onNewChat}
-            >
-              ✦
-            </button>
-          </div>
-        </div>
-
-        <div className="mascot-body">
-          {showSettings ? (
-            <SettingsScreen />
-          ) : activeConv ? (
-            <ChatWindow
-              key={activeConv.id}
-              conversationId={activeConv.id}
-              onConversationUpdate={onConversationUpdate}
-              compact={panelSize.width < 520}
-              onRunningChange={handleRunningChange}
-            />
-          ) : (
-            <div className="mascot-empty">
-              <p>Nessuna chat attiva</p>
-              <button className="btn-primary" onClick={onNewChat}>
-                Nuova chat
+      {panelOpen && (
+        <div
+          className="mascot-float-panel"
+          style={{ top: panelPos.top, left: panelPos.left, width: panelSize.width, height: panelSize.height }}
+          data-mouse-active
+        >
+          <div className="mascot-float-handle" onMouseDown={onDragHandleDown}>
+            <span className="mascot-title">WS Jessica</span>
+            <div className="mascot-header-actions">
+              <button
+                className="mascot-icon-btn"
+                title="Nuova chat"
+                onClick={() => { onNewChat(); setPanelOpen(true) }}
+              >
+                ✦
+              </button>
+              <button
+                className="mascot-icon-btn"
+                title="Chiudi pannello"
+                onClick={() => setPanelOpen(false)}
+              >
+                ✕
               </button>
             </div>
-          )}
+          </div>
+
+          <div className="mascot-body">
+            {showSettings ? (
+              <SettingsScreen />
+            ) : activeConv ? (
+              <ChatWindow
+                key={activeConv.id}
+                conversationId={activeConv.id}
+                onConversationUpdate={onConversationUpdate}
+                compact={panelSize.width < 520}
+                onRunningChange={handleRunningChange}
+              />
+            ) : (
+              <div className="mascot-empty">
+                <p>Nessuna chat attiva</p>
+                <button className="btn-primary" onClick={() => { onNewChat(); setPanelOpen(true) }}>
+                  Nuova chat
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="mascot-resize-handle" onMouseDown={onResizeHandleDown} data-mouse-active />
         </div>
-        <div className="mascot-resize-handle" onMouseDown={onResizeHandleDown} data-mouse-active />
-      </div>
+      )}
 
       {/* Avatar — click to open quick-actions */}
       <div className="mascot-avatar-wrap" data-mouse-active ref={avatarMenuRef}>
         {avatarMenuOpen && (
           <div className="mascot-avatar-menu">
             <div className="mascot-avatar-menu-greeting">Cosa devo fare?</div>
+            {conversations.length > 0 && (
+              <>
+                <div className="mascot-avatar-menu-label">Chat recenti</div>
+                <div className="mascot-avatar-menu-recent">
+                  {conversations.slice(0, 5).map((conv) => (
+                    <button
+                      key={conv.id}
+                      className="mascot-avatar-action"
+                      onClick={() => {
+                        onSelectConversation(conv.id)
+                        setPanelOpen(true)
+                        setAvatarMenuOpen(false)
+                      }}
+                    >
+                      <span className="mascot-avatar-action-icon">💬</span>
+                      {conv.title}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
             <div className="mascot-avatar-menu-actions">
               <button
                 className="mascot-avatar-action"
-                onClick={() => { onNewChat(); setAvatarMenuOpen(false) }}
+                onClick={() => { onNewChat(); setPanelOpen(true); setAvatarMenuOpen(false) }}
               >
                 <span className="mascot-avatar-action-icon">✦</span>
                 Nuova chat
               </button>
               <button
                 className={`mascot-avatar-action ${showSettings ? 'is-active' : ''}`}
-                onClick={() => { onSettingsToggle(); setAvatarMenuOpen(false) }}
+                onClick={() => { onSettingsToggle(); setPanelOpen(true); setAvatarMenuOpen(false) }}
               >
                 <span className="mascot-avatar-action-icon">⚙</span>
                 Impostazioni
+              </button>
+              <button
+                className="mascot-avatar-action"
+                onClick={() => { onSwitchToWindowMode(); setAvatarMenuOpen(false) }}
+              >
+                <span className="mascot-avatar-action-icon">🗗</span>
+                Passa alla app finestra
               </button>
               <button
                 className="mascot-avatar-action mascot-avatar-action--danger"
