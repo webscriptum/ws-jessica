@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import ChatWindow from './ChatWindow'
-import JessicaAvatarBust from './JessicaAvatarBust'
+import JessicaGirlCSS from './JessicaGirlCSS'
 import SettingsScreen from './SettingsScreen'
 import type { Conversation, MascotAvatarSize } from '../../../preload/index.d'
 
@@ -159,7 +159,7 @@ export default function MascotLayout({
 
       {/* Avatar fisso in basso */}
       <div className="mascot-avatar-wrap" data-mouse-active>
-        <JessicaAvatarBust size={avatarSize} state={isRunning ? 'thinking' : 'idle'} />
+        <JessicaGirlCSS size={avatarSize} state={isRunning ? 'thinking' : 'idle'} />
       </div>
     </div>
   )

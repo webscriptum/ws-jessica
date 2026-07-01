@@ -1,0 +1,851 @@
+/* Keyframes prefixed jg- to avoid conflicts */
+
+@keyframes jg-leg {
+  0%   { transform: rotate(-102deg); }
+  50%  { transform: rotate(-108deg); }
+  100% { transform: rotate(-98deg); }
+}
+
+@keyframes jg-foot-bottom {
+  0%   { transform: rotate(-14deg); }
+  50%  { transform: rotate(-20deg) translate(10px, 0); }
+  100% { transform: rotate(-10deg) translate(-8px, 0); }
+}
+
+@keyframes jg-foot {
+  0%   { transform: rotate(-14deg); }
+  50%  { transform: rotate(-25deg) translate(10px, 0); }
+  100% { transform: rotate(-5deg) translate(-8px, 0); }
+}
+
+@keyframes jg-steam1 {
+  0%   { transform: translate(0, -16px); }
+  25%  { transform: translate(-16px, -32px); }
+  50%  { transform: translate(0, -48px); }
+  75%  { transform: translate(-16px, -64px); opacity: 0.7; }
+  100% { transform: translate(0, -80px); opacity: 0; }
+}
+
+@keyframes jg-steam2 {
+  0%   { transform: translate(0, -16px); }
+  25%  { transform: translate(8px, -32px); }
+  50%  { transform: translate(0, -48px); }
+  75%  { transform: translate(8px, -64px); opacity: 0.7; }
+  100% { transform: translate(0, -80px); opacity: 0; }
+}
+
+@keyframes jg-eyes {
+  from { transform: rotateX(50deg); }
+  to   { transform: rotateX(0deg); }
+}
+
+@keyframes jg-mouth {
+  to { transform: rotateX(45deg); }
+}
+
+@keyframes jg-hand-center {
+  0%   { transform: rotate(-3deg); }
+  50%  { transform: rotate(0deg); }
+  100% { transform: rotate(-3deg); }
+}
+
+@keyframes jg-hand-wrist {
+  0%   { transform: rotate(-3deg); }
+  50%  { transform: rotate(0deg) translate(-3px, 3px) skew(15deg, 0deg); }
+  100% { transform: rotate(-3deg); }
+}
+
+@keyframes jg-hand-mouse {
+  0%   { transform: translate(0, 0); }
+  50%  { transform: translate(-5px, 0); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes jg-hand-wrist2 {
+  0%   { transform: rotate(-3deg); }
+  50%  { transform: rotate(-5deg) translate(6px, 0) skew(-15deg, 0deg); }
+  100% { transform: rotate(-2deg); }
+}
+
+/* ─── Outer wrapper ─── */
+
+.jessica-girl-scene {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.jessica-girl-scene * {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.jessica-girl-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+}
+
+/* FRAME */
+.jessica-girl-scene .frame {
+  width: 900px;
+  height: 800px;
+  background: #747d7a;
+  position: relative;
+}
+
+/* ─── WALL ─── */
+
+.jessica-girl-scene .wall {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 380px;
+  height: 392px;
+  background: #65706c;
+}
+
+.jessica-girl-scene .wall-dark {
+  position: absolute;
+  background: #65706c;
+}
+
+.jessica-girl-scene .wall-dark--0 { width: 58px; height: 58px; border-radius: 50%; left: -115px; top: 0; }
+.jessica-girl-scene .wall-dark--1 { top: 0; left: -34px; width: 34px; height: 56px; border-radius: 28px 0 0 28px; }
+.jessica-girl-scene .wall-dark--2 { top: 0; right: -34px; width: 34px; height: 56px; border-radius: 0 28px 28px 0; }
+.jessica-girl-scene .wall-dark--3 { top: 112px; left: -120px; width: 120px; height: 42px; border-radius: 21px 0 0 21px; }
+.jessica-girl-scene .wall-dark--4 { top: 112px; right: -80px; width: 80px; height: 56px; border-radius: 0 28px 28px 0; }
+.jessica-girl-scene .wall-dark--5 { top: 210px; left: -190px; width: 190px; height: 56px; border-radius: 28px 0 0 28px; }
+.jessica-girl-scene .wall-dark--6 { top: 214px; right: -110px; width: 110px; height: 56px; border-radius: 0 28px 28px 0; }
+.jessica-girl-scene .wall-dark--7 { top: 312px; left: -140px; width: 140px; height: 80px; border-radius: 40px 0 0 40px; }
+.jessica-girl-scene .wall-dark--8 { top: 328px; right: -180px; width: 180px; height: 64px; border-radius: 0 32px 32px 0; }
+
+.jessica-girl-scene .wall-light { position: absolute; background: #747d7a; }
+
+.jessica-girl-scene .wall-light--1 { width: 34px; height: 56px; border-radius: 0 28px 28px 0; left: 0; top: 56px; }
+.jessica-girl-scene .wall-light--2 { width: 34px; height: 56px; border-radius: 28px 0 0 28px; right: 0; top: 56px; }
+.jessica-girl-scene .wall-light--3 { width: 34px; height: 56px; border-radius: 0 28px 28px 0; left: 0; top: 154px; }
+.jessica-girl-scene .wall-light--4 { width: 34px; height: 46px; border-radius: 23px 0 0 23px; right: 0; top: 168px; }
+.jessica-girl-scene .wall-light--5 { width: 34px; height: 46px; border-radius: 0 23px 23px 0; left: 0; top: 266px; }
+.jessica-girl-scene .wall-light--6 { width: 34px; height: 58px; border-radius: 29px 0 0 29px; right: 0; top: 270px; }
+
+/* ─── TABLE ─── */
+
+.jessica-girl-scene .table {
+  position: absolute;
+  left: 127px;
+  top: 405px;
+}
+
+.jessica-girl-scene .table-top {
+  width: 576px;
+  height: 28px;
+  border-radius: 7px;
+  background: #afafaf;
+  position: relative;
+  z-index: 10;
+}
+
+.jessica-girl-scene .table-top:before {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 450px;
+  background: #f2f2f2;
+  border-radius: 7px;
+}
+
+.jessica-girl-scene .table-leg {
+  position: absolute;
+  top: 100%;
+  height: 270px;
+  width: 20px;
+}
+
+.jessica-girl-scene .table-leg--front {
+  left: 36px;
+  background: #2f262d;
+  box-shadow: 374px 0 0 #2f262d;
+  z-index: 3;
+}
+
+.jessica-girl-scene .table-leg--back {
+  left: 147px;
+  background: #494149;
+  box-shadow: 370px 0 0 #494149;
+  z-index: 4;
+}
+
+.jessica-girl-scene .table-shadow {
+  position: absolute;
+  top: 284px;
+  left: -35px;
+  width: 648px;
+  height: 30px;
+  background: #4c5250;
+  border-radius: 15px;
+  z-index: 1;
+}
+
+/* ─── CUP ─── */
+
+.jessica-girl-scene .cup {
+  position: absolute;
+  left: 82px;
+  bottom: 100%;
+  width: 46px;
+  height: 60px;
+}
+
+.jessica-girl-scene .cup-body {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: #efa573;
+  border-radius: 0 0 11px 11px;
+  z-index: 2;
+}
+
+.jessica-girl-scene .cup-body:before {
+  content: "";
+  position: absolute;
+  left: -15px;
+  top: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 5px solid #efa573;
+}
+
+.jessica-girl-scene .cup-body:after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 65%;
+  height: 75%;
+  background: #f7bc8b;
+  border-radius: 0 0 0 8px;
+}
+
+.jessica-girl-scene .cup-steam {
+  position: absolute;
+  bottom: 38px;
+  left: 0;
+  width: 100%;
+  z-index: 1;
+}
+
+.jessica-girl-scene .cup-steam-item {
+  position: absolute;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+}
+
+.jessica-girl-scene .cup-steam-item--sm { width: 14px; height: 14px; }
+
+.jessica-girl-scene .cup-steam-item:nth-child(odd)  { left: 14px; animation: jg-steam1 4s infinite ease; }
+.jessica-girl-scene .cup-steam-item:nth-child(even) { left: 20px; animation: jg-steam2 4s infinite ease; animation-delay: 2s; }
+
+/* ─── MONITOR ─── */
+
+.jessica-girl-scene .monitor {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  z-index: 4;
+}
+
+.jessica-girl-scene .monitor-top {
+  position: absolute;
+  bottom: 50px;
+  right: 0;
+  width: 190px;
+  height: 130px;
+  transform: skew(-10deg, 0deg);
+  border-radius: 10px;
+  background: #f4eff0;
+  box-shadow: -10px 0 0 #cecece;
+}
+
+.jessica-girl-scene .monitor-mark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #cecece;
+}
+
+.jessica-girl-scene .monitor-mark:before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  width: 20px;
+  height: 20px;
+  background: #f4eff0;
+  border-radius: 50%;
+}
+
+.jessica-girl-scene .monitor-leg {
+  position: absolute;
+  right: 79px;
+  bottom: 0;
+  height: 77px;
+  width: 30px;
+  transform: skew(10deg, 0deg);
+  border-radius: 5px 5px 5px 0;
+  background: #f4eff0;
+  box-shadow: -5px -1px 0 #cecece;
+}
+
+.jessica-girl-scene .monitor-leg:before {
+  content: "";
+  position: absolute;
+  right: 100%;
+  bottom: 0;
+  width: 30px;
+  height: 6px;
+  background: #cecece;
+  border-radius: 10px 3px 3px 0;
+}
+
+/* ─── CHAIR ─── */
+
+.jessica-girl-scene .chair {
+  position: absolute;
+  left: 277px;
+  top: 405px;
+  height: 28px;
+  z-index: 1;
+}
+
+.jessica-girl-scene .chair-body {
+  position: absolute;
+  background: #e0e0e0;
+  width: 215px;
+  height: 210px;
+  bottom: -72px;
+  left: 0;
+  border-radius: 14% 100% 42% 85%;
+  box-shadow: -1px 12px #c1bdbd;
+  z-index: 2;
+}
+
+.jessica-girl-scene .chair-leg {
+  position: absolute;
+  left: 87px;
+  top: 100%;
+  height: 270px;
+  width: 20px;
+  background: #282026;
+  z-index: 1;
+}
+
+/* ─── GIRL ─── */
+
+.jessica-girl-scene .girl {
+  position: absolute;
+  left: 296px;
+  top: 278px;
+  width: 122px;
+  height: 162px;
+  z-index: 3;
+}
+
+/* HEAD */
+.jessica-girl-scene .girl-head {
+  position: absolute;
+  width: 95px;
+  height: 108px;
+  top: -135px;
+  left: 53px;
+  z-index: 3;
+}
+
+.jessica-girl-scene .girl-head-face {
+  position: absolute;
+  width: 95px;
+  height: 108px;
+  top: 0;
+  left: 0;
+  background: #ef9067;
+  border-radius: 0 20px 50px 50px;
+  z-index: 3;
+  box-shadow: -4px 0 0 0 #db7650;
+}
+
+.jessica-girl-scene .girl-head-face-shadow {
+  position: absolute;
+  background: #fc9f6f;
+  width: 75%;
+  height: 100%;
+  top: 0;
+  right: 0;
+  border-radius: 0 77px 213px 103px;
+}
+
+.jessica-girl-scene .girl-head-eyes {
+  position: absolute;
+  top: 35px;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.jessica-girl-scene .girl-head-eyes-glass {
+  width: 32px;
+  height: 24px;
+  border: 3px solid #f6cdf7;
+  box-shadow: -2px 2px #dd9883;
+  border-radius: 4px;
+  margin: 0 0 0 4px;
+  position: relative;
+}
+
+.jessica-girl-scene .girl-head-eyes-glass:before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  margin-left: -7px;
+  width: 14px;
+  height: 4px;
+  background: #161515;
+  border-radius: 40%;
+  animation: jg-eyes 6s ease infinite alternate;
+}
+
+.jessica-girl-scene .girl-head-mouth {
+  position: absolute;
+  top: 70px;
+  left: 50px;
+  width: 20px;
+  height: 15px;
+  background: #fcfafa;
+  border-radius: 0 0 8px 8px;
+  animation: jg-mouth 6s ease infinite alternate;
+}
+
+.jessica-girl-scene .girl-head-neck {
+  position: absolute;
+  background: #ef9067;
+  top: 88px;
+  width: 34px;
+  height: 50px;
+  left: 10px;
+}
+
+/* HAIR */
+.jessica-girl-scene .girl-head-hair {
+  position: absolute;
+  top: -55px;
+  right: 18px;
+  width: 136px;
+  z-index: 4;
+}
+
+.jessica-girl-scene .girl-head-hair-top {
+  position: absolute;
+  background: #754743;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 85px;
+  border-radius: 58% 49% 83% 44% / 83% 70% 63% 68%;
+}
+
+.jessica-girl-scene .girl-head-hair-center {
+  position: absolute;
+  box-shadow: 60px 0 0 0 #754743;
+  transform: scaleX(-1);
+  left: 60px;
+  top: 50px;
+  width: 110px;
+  border-radius: 0 0 58% 0 / 0 0 100% 0;
+  height: 153px;
+}
+
+.jessica-girl-scene .girl-head-hair-quiff {
+  position: absolute;
+  box-shadow: 60px 1px 0 0 #754743;
+  transform: scaleX(-1) rotate(-49deg);
+  left: 57px;
+  top: 89px;
+  width: 110px;
+  border-radius: 0 0 58% 0 / 0 0 100% 0;
+  height: 87px;
+}
+
+.jessica-girl-scene .girl-head-hair-right {
+  position: absolute;
+  background: #603936;
+  right: -12px;
+  top: -25px;
+  width: 71px;
+  height: 172px;
+  border-radius: 69% 74% 46% 90% / 29% 35% 0% 90%;
+  z-index: 2;
+}
+
+.jessica-girl-scene .girl-head-hair-corner {
+  position: absolute;
+  background: #603936;
+  right: -24px;
+  top: -46px;
+  width: 88px;
+  height: 141px;
+  border-radius: 69% 74% 46% 90% / 49% 60% 55% 90%;
+  z-index: 1;
+}
+
+.jessica-girl-scene .girl-head-hair-back {
+  position: absolute;
+  background: #754743;
+  left: -66px;
+  top: -20px;
+  width: 43px;
+  height: 143px;
+  border-radius: 50% 0 0% 100%;
+  box-shadow: -2px 17px 0 0 #754743, 7px 24px 0 0 #754743, 24px 25px 0 0 #754743;
+}
+
+.jessica-girl-scene .girl-head-hair-crown {
+  position: absolute;
+  background: #754743;
+  left: -41px;
+  top: -59px;
+  width: 102px;
+  height: 75px;
+  border-radius: 40%;
+}
+
+/* BODY */
+.jessica-girl-scene .girl-body {
+  position: absolute;
+  left: 38px;
+  top: 0;
+  width: 90px;
+  height: 100%;
+  transform: rotate(-5deg);
+}
+
+.jessica-girl-scene .girl-body-shirt {
+  position: absolute;
+  background: #f05364;
+  width: 100%;
+  height: 100%;
+  border-radius: 28px 10px 0 0;
+  z-index: 2;
+}
+
+.jessica-girl-scene .girl-body-breast {
+  position: absolute;
+  background: #f05364;
+  top: 40px;
+  left: 62px;
+  height: 47px;
+  width: 40px;
+  border-radius: 0 90% 50% 0;
+  z-index: 2;
+}
+
+.jessica-girl-scene .girl-body-collar {
+  position: absolute;
+  width: 38px;
+  height: 30px;
+  background: #ef9067;
+  border-radius: 0 0 14px 25px;
+  left: 30px;
+  top: 0;
+  z-index: 3;
+}
+
+.jessica-girl-scene .girl-body-shoulder {
+  position: absolute;
+  width: 26px;
+  height: 46px;
+  background: #ef9067;
+  border-radius: 50%;
+  top: 10px;
+  left: 5px;
+  z-index: 3;
+}
+
+/* HAND RIGHT */
+.jessica-girl-scene .girl-body-hand_right {
+  position: absolute;
+  height: 115px;
+  width: 125px;
+  top: 13px;
+  left: 0;
+  transform: rotate(5deg);
+  z-index: 4;
+}
+
+.jessica-girl-scene .girl-body-hand_right-top {
+  position: absolute;
+  top: -3px;
+  left: 20px;
+  height: 120px;
+  width: 28px;
+  background: #fc9f6f;
+  transform: rotate(-32deg);
+  border-radius: 12px 12px 0 0;
+}
+
+.jessica-girl-scene .girl-body-hand_right-center {
+  position: absolute;
+  top: 93px;
+  left: 54px;
+  height: 22px;
+  width: 70px;
+  background: #fc9f6f;
+  transform: rotate(-3deg);
+  animation: jg-hand-center 6s ease infinite;
+}
+
+.jessica-girl-scene .girl-body-hand_right-wrist {
+  position: absolute;
+  top: 77px;
+  left: 123px;
+  height: 35px;
+  width: 42px;
+  border-radius: 50% 50% 20% 0;
+  background: #fc9f6f;
+  transform: rotate(-3deg);
+  z-index: 3;
+  animation: jg-hand-wrist 6s ease infinite;
+}
+
+.jessica-girl-scene .girl-body-hand_right-mouse {
+  position: absolute;
+  top: 96px;
+  left: 135px;
+  background: #f7f7f7;
+  width: 46px;
+  height: 20px;
+  border-radius: 50% 100% 0 0;
+  z-index: 2;
+  animation: jg-hand-mouse 6s ease infinite;
+}
+
+/* HAND LEFT */
+.jessica-girl-scene .girl-body-hand_left {
+  position: absolute;
+  height: 115px;
+  width: 125px;
+  top: 13px;
+  left: 79px;
+  transform: rotate(5deg);
+  z-index: 1;
+}
+
+.jessica-girl-scene .girl-body-hand_left-top {
+  position: absolute;
+  top: -3px;
+  left: 7px;
+  height: 120px;
+  width: 26px;
+  background: #ef9067;
+  transform: rotate(-20deg);
+  border-radius: 12px 12px 0 0;
+}
+
+.jessica-girl-scene .girl-body-hand_left-center {
+  position: absolute;
+  top: 97px;
+  left: 28px;
+  height: 22px;
+  width: 70px;
+  background: #ef9067;
+  transform: rotate(-1deg);
+}
+
+.jessica-girl-scene .girl-body-hand_left-wrist {
+  position: absolute;
+  top: 90px;
+  left: 87px;
+  height: 28px;
+  width: 44px;
+  border-radius: 50% 50% 0 0;
+  background: #ef9067;
+  transform: rotate(-1deg);
+  animation: jg-hand-wrist2 5s linear infinite;
+}
+
+.jessica-girl-scene .girl-body-hand_left-keyboard {
+  position: absolute;
+  width: 90px;
+  height: 6px;
+  border-radius: 3px;
+  background: #f7f7f7;
+  box-shadow: 0 2px #cecece;
+  z-index: 3;
+  top: 115px;
+  left: 106px;
+}
+
+.jessica-girl-scene .girl-body-hand_left-keyboard-btn {
+  position: absolute;
+  bottom: 100%;
+  left: 5px;
+  width: 8px;
+  height: 5px;
+  background: #f4eff0;
+  border-radius: 3px 3px 0 0;
+  box-shadow:
+    12px 0 0 0 #f4eff0, 24px 0 0 0 #f4eff0,
+    36px 0 0 0 #f4eff0, 48px 0 0 0 #f4eff0,
+    60px 0 0 0 #f4eff0, 72px 0 0 0 #f4eff0;
+}
+
+/* LEGS LEFT */
+.jessica-girl-scene .girl-leg-left {
+  position: absolute;
+  left: 45px;
+  top: 100%;
+  width: 100%;
+}
+
+.jessica-girl-scene .girl-leg-left-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 158px;
+  height: 50px;
+  background: #352934;
+  border-radius: 0 25px 23px 37px;
+}
+
+.jessica-girl-scene .girl-leg-left-center {
+  position: absolute;
+  width: 185px;
+  height: 40px;
+  background: #352934;
+  transform: rotate(-57deg);
+  left: 5px;
+  top: 71px;
+  border-radius: 0 0 20px 0;
+}
+
+.jessica-girl-scene .girl-leg-left-bottom {
+  position: absolute;
+  left: 24px;
+  top: 165px;
+  width: 25px;
+  height: 40px;
+  background: #ef9067;
+  transform: rotate(32deg);
+}
+
+.jessica-girl-scene .girl-leg-left-foot {
+  position: absolute;
+  left: -10px;
+  top: 200px;
+  width: 100px;
+  height: 25px;
+  background: #535452;
+  transform: rotate(45deg);
+  border-radius: 45px 50px 12px 16px;
+  overflow: hidden;
+}
+
+.jessica-girl-scene .girl-leg-left-foot:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 5px;
+  background: #cecece;
+}
+
+/* LEGS RIGHT */
+.jessica-girl-scene .girl-leg-right {
+  position: absolute;
+  left: 45px;
+  top: 100%;
+  width: 100%;
+}
+
+.jessica-girl-scene .girl-leg-right-top {
+  position: absolute;
+  top: -18px;
+  left: 0;
+  width: 158px;
+  height: 57px;
+  background: #3b323a;
+  border-radius: 22px 25px 23px 36px;
+  transform: rotate(-15deg);
+}
+
+.jessica-girl-scene .girl-leg-right-center {
+  position: absolute;
+  width: 185px;
+  height: 40px;
+  background: #3b323a;
+  transform: rotate(-102deg);
+  left: 66px;
+  top: 49px;
+  border-radius: 0 0 20px 0;
+  animation: jg-leg 3s infinite ease-in-out alternate;
+}
+
+.jessica-girl-scene .girl-leg-right-bottom {
+  position: absolute;
+  left: 170px;
+  top: 159px;
+  width: 25px;
+  height: 40px;
+  background: #ef9067;
+  transform: rotate(-11deg);
+  animation: jg-foot-bottom 3s infinite ease-in-out alternate;
+}
+
+.jessica-girl-scene .girl-leg-right-foot {
+  position: absolute;
+  left: 157px;
+  top: 179px;
+  width: 100px;
+  height: 25px;
+  background: #535452;
+  transform: rotate(-14deg);
+  border-radius: 45px 50px 12px 16px;
+  overflow: hidden;
+  animation: jg-foot 3s infinite ease-in-out alternate;
+}
+
+.jessica-girl-scene .girl-leg-right-foot:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 5px;
+  background: #cecece;
+}
+
+/* ─── Thinking state: speed up animations ─── */
+
+.jessica-girl-scene--thinking .girl-leg-right-center  { animation-duration: 0.7s; }
+.jessica-girl-scene--thinking .girl-leg-right-bottom  { animation-duration: 0.7s; }
+.jessica-girl-scene--thinking .girl-leg-right-foot    { animation-duration: 0.7s; }
+.jessica-girl-scene--thinking .girl-body-hand_right-center { animation-duration: 1.2s; }
+.jessica-girl-scene--thinking .girl-body-hand_right-wrist  { animation-duration: 1.2s; }
+.jessica-girl-scene--thinking .girl-body-hand_right-mouse  { animation-duration: 1.2s; }
+.jessica-girl-scene--thinking .girl-body-hand_left-wrist   { animation-duration: 1.2s; }
