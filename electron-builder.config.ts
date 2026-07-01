@@ -16,15 +16,11 @@ const config: Configuration = {
   },
   mac: {
     target: [{ target: 'dmg', arch: ['x64', 'arm64'] }],
-    icon: 'resources/icon.icns',
-    hardenedRuntime: true,
-    gatekeeperAssess: false,
-    entitlements: 'resources/entitlements.mac.plist',
-    entitlementsInherit: 'resources/entitlements.mac.plist'
+    hardenedRuntime: false,
+    gatekeeperAssess: false
   },
   win: {
-    target: [{ target: 'nsis', arch: ['x64'] }],
-    icon: 'resources/icon.ico'
+    target: [{ target: 'nsis', arch: ['x64'] }]
   },
   nsis: {
     oneClick: false,
