@@ -14,11 +14,16 @@ import { generateImage } from './tools/generate-image'
 import { detectSpecialty, SPECIALIST_PROMPTS } from './specialists'
 import { loadOpenAiKey } from '../storage/secure-storage'
 import { updateClientField } from '../storage/clients'
+import log from 'electron-log/main'
 import type { DeliverableWritten, ClientProfile } from '../../shared/types'
 
-const MODEL_SONNET = 'claude-sonnet-4-6'
+export const MODEL_SONNET = 'claude-sonnet-5'
 const MODEL_OPUS = 'claude-opus-4-8'
-const RATE_LIMIT_WAIT_MS = 65_000
+const DEFAULT_RATE_LIMIT_WAIT_MS = 60_000
+// Le immagini base64 nei tool_result vengono sostituite con un placeholder
+// una volta più vecchie di questa soglia: rispedirle a ogni turno costa
+// migliaia di token e l'analisi è ormai nel testo della conversazione.
+const IMAGE_SLIM_AFTER_MESSAGES = 4
 
 const BASE_SYSTEM_PROMPT = `Sei Jessica, l'assistente AI di Webscriptum — un'agenzia creativa italiana.
 
@@ -382,6 +387,10 @@ function buildClientProfileSection(p: ClientProfile): string {
   return lines.join('\n')
 }
 
+// Tool senza effetti collaterali e senza dialog: eseguibili in parallelo.
+// read_output_file è escluso perché resolveOutputDir può aprire un dialog.
+const PARALLEL_SAFE_TOOLS = new Set(['read_source_file', 'fetch_url'])
+
 export class Orchestrator {
   private client: Anthropic
   private conversation: Anthropic.MessageParam[] = []
@@ -390,6 +399,7 @@ export class Orchestrator {
   private outputFolder: string | null
   private model: string
   private clientId: string | null
+  private activeTools: Anthropic.Tool[] | null = null
 
   constructor(
     private apiKey: string,
@@ -439,38 +449,77 @@ export class Orchestrator {
     return join(this.outputFolder, today)
   }
 
+  // Copia dei messaggi con breakpoint di cache sull'ultimo blocco dell'ultimo
+  // messaggio: la history è append-only, quindi ogni turno rilegge dalla cache
+  // tutto il prefisso del turno precedente. La history salvata resta pulita.
+  private messagesWithCacheBreakpoint(): Anthropic.MessageParam[] {
+    if (this.conversation.length === 0) return this.conversation
+    const messages = [...this.conversation]
+    const last = messages[messages.length - 1]
+    const blocks: Anthropic.ContentBlockParam[] =
+      typeof last.content === 'string' ? [{ type: 'text', text: last.content }] : [...last.content]
+    const tail = blocks[blocks.length - 1]
+    // cache_control non è ammesso sui blocchi thinking
+    if (tail && tail.type !== 'thinking' && tail.type !== 'redacted_thinking') {
+      blocks[blocks.length - 1] = {
+        ...tail,
+        cache_control: { type: 'ephemeral' }
+      } as Anthropic.ContentBlockParam
+    }
+    messages[messages.length - 1] = { role: last.role, content: blocks }
+    return messages
+  }
+
+  private effortForTurn(voiceMode?: string): 'low' | 'medium' | 'high' {
+    if (this.model === MODEL_OPUS) return 'high'
+    // Sonnet 5: medium ≈ Sonnet 4.6 a effort high; low per la voce (latenza)
+    return voiceMode === 'conversation' ? 'low' : 'medium'
+  }
+
   // Streams a single turn, retrying on rate limit
   private async streamTurn(
-    activeSystem: string,
-    activeTools: Anthropic.Tool[]
+    activeSystem: Anthropic.TextBlockParam[],
+    activeTools: Anthropic.Tool[],
+    voiceMode?: string
   ): Promise<Anthropic.Message> {
     let retryCount = 0
-    const MAX_RETRIES = 3
+    const MAX_RETRIES = 2
 
     while (true) {
       try {
         const stream = this.client.messages.stream({
           model: this.model,
-          max_tokens: 16000,
+          max_tokens: 32000,
           system: activeSystem,
-          messages: this.conversation,
-          tools: activeTools
+          messages: this.messagesWithCacheBreakpoint(),
+          tools: activeTools,
+          output_config: { effort: this.effortForTurn(voiceMode) }
         })
 
         stream.on('text', (text) => {
           if (!this.cancelled) this.mainWindow.webContents.send('agent:token', text)
         })
 
-        return await stream.finalMessage()
+        const message = await stream.finalMessage()
+        const u = message.usage
+        log.info(
+          `[agent] ${this.model} stop=${message.stop_reason} input=${u.input_tokens} cache_read=${u.cache_read_input_tokens ?? 0} cache_write=${u.cache_creation_input_tokens ?? 0} output=${u.output_tokens}`
+        )
+        return message
       } catch (e) {
         if (e instanceof Anthropic.RateLimitError && retryCount < MAX_RETRIES && !this.cancelled) {
           retryCount++
-          const waitSec = Math.round(RATE_LIMIT_WAIT_MS / 1000)
+          const retryAfterSec = Number(e.headers?.get?.('retry-after'))
+          const waitMs =
+            Number.isFinite(retryAfterSec) && retryAfterSec > 0
+              ? Math.min(retryAfterSec * 1000 + 1000, 120_000)
+              : DEFAULT_RATE_LIMIT_WAIT_MS
+          const waitSec = Math.round(waitMs / 1000)
           this.mainWindow.webContents.send(
             'agent:token',
             `\n\n*⏳ Limite richieste raggiunto — riprovo automaticamente tra ${waitSec} secondi (tentativo ${retryCount}/${MAX_RETRIES})…*\n\n`
           )
-          await new Promise((r) => setTimeout(r, RATE_LIMIT_WAIT_MS))
+          await new Promise((r) => setTimeout(r, waitMs))
           continue
         }
         throw e
@@ -504,9 +553,31 @@ export class Orchestrator {
     this.mainWindow.webContents.send('agent:status', label)
   }
 
+  // Sostituisce le immagini base64 nei tool_result più vecchi con un placeholder:
+  // l'analisi visiva è ormai nel testo, rispedirle a ogni turno costa migliaia di token.
+  private slimOldImages(): void {
+    const cutoff = this.conversation.length - IMAGE_SLIM_AFTER_MESSAGES
+    for (let i = 0; i < cutoff; i++) {
+      const msg = this.conversation[i]
+      if (msg.role !== 'user' || !Array.isArray(msg.content)) continue
+      for (const block of msg.content) {
+        if (typeof block !== 'object' || block.type !== 'tool_result' || !Array.isArray(block.content)) continue
+        for (let j = 0; j < block.content.length; j++) {
+          if (block.content[j].type === 'image') {
+            block.content[j] = {
+              type: 'text',
+              text: "[Immagine già analizzata in un turno precedente — l'analisi è nella conversazione.]"
+            }
+          }
+        }
+      }
+    }
+  }
+
   async sendMessage(userMessage: string, voiceMode?: string): Promise<DeliverableWritten[]> {
     this.cancelled = false
     this.sanitizeConversation()
+    this.slimOldImages()
     const deliverables: DeliverableWritten[] = []
 
     this.conversation.push({ role: 'user', content: userMessage })
@@ -514,154 +585,182 @@ export class Orchestrator {
     const specialty = detectSpecialty(userMessage)
     const specialistSection = SPECIALIST_PROMPTS[specialty]
     const voiceSection = voiceMode === 'conversation' ? VOICE_CONVERSATION_SYSTEM : ''
-    const activeSystem = specialistSection
-      ? `${this.systemPrompt}\n\n---\n\n${specialistSection}${voiceSection}`
-      : `${this.systemPrompt}${voiceSection}`
+    // Prefisso stabile (base + profilo + contesto) con breakpoint di cache; la
+    // parte volatile (specialist per-messaggio, voce) va in un blocco separato
+    // DOPO il breakpoint per non invalidare la cache di tools+system.
+    const activeSystem: Anthropic.TextBlockParam[] = [
+      { type: 'text', text: this.systemPrompt, cache_control: { type: 'ephemeral' } }
+    ]
+    const volatileSection = `${specialistSection ? `\n\n---\n\n${specialistSection}` : ''}${voiceSection}`
+    if (volatileSection) activeSystem.push({ type: 'text', text: volatileSection })
 
-    // Load OpenAI key fresh at call time so it works even if set after app start
-    const openAiKey = loadOpenAiKey()
-    const activeTools = openAiKey ? TOOLS : TOOLS.filter((t) => t.name !== 'generate_image')
+    // Toolset deciso una volta per orchestrator: variarlo tra un turno e l'altro
+    // invaliderebbe la cache di tools+system. Una chiave OpenAI aggiunta a caldo
+    // vale dalla prossima conversazione (generate_image rilegge comunque la chiave).
+    if (!this.activeTools) {
+      this.activeTools = loadOpenAiKey() ? TOOLS : TOOLS.filter((t) => t.name !== 'generate_image')
+    }
 
     while (!this.cancelled) {
-      const message = await this.streamTurn(activeSystem, activeTools)
+      const message = await this.streamTurn(activeSystem, this.activeTools, voiceMode)
       this.conversation.push({ role: 'assistant', content: message.content })
-
-      if (message.stop_reason === 'end_turn') break
 
       if (message.stop_reason === 'tool_use') {
         const toolUseBlocks = message.content.filter(
           (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
         )
 
-        const toolResults: Anthropic.ToolResultBlockParam[] = []
-        for (const toolUse of toolUseBlocks) {
-          if (this.cancelled) {
-            toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: 'Operazione annullata.' })
-            continue
-          }
+        const resultsById = new Map<string, Anthropic.ToolResultBlockParam>()
+        const parallelSafe = toolUseBlocks.filter((t) => PARALLEL_SAFE_TOOLS.has(t.name))
+        const sequential = toolUseBlocks.filter((t) => !PARALLEL_SAFE_TOOLS.has(t.name))
 
-          const input = toolUse.input as Record<string, string>
-          let result: string = ''
-          let imageContent: (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[] | null = null
-
-          if (toolUse.name === 'read_source_file') {
-            this.sendStatus(`📖 Lettura file sorgente: ${input.filename}`)
-            const fileResult = await readSourceFileResult(this.sourceFiles, input.filename)
-            if (fileResult.kind === 'image') {
-              imageContent = [
-                {
-                  type: 'image' as const,
-                  source: { type: 'base64' as const, media_type: fileResult.mediaType, data: fileResult.base64 }
-                },
-                {
-                  type: 'text' as const,
-                  text: `Immagine "${fileResult.name}" caricata. Analizza: colori dominanti (fornisci HEX approssimati), stile grafico (minimal/bold/luxury/corporate), tipografia (serif/sans-serif, peso visivo), mood e uso previsto (logo, illustrazione, foto, moodboard reference). Se trovi chiari colori brand HEX, salvali subito con save_client_info.`
-                }
-              ]
-            } else {
-              result = fileResult.content
-            }
-          } else if (toolUse.name === 'read_output_file') {
-            this.sendStatus(`📂 Lettura output: ${input.filename}`)
-            try {
-              const outputDir = await this.resolveOutputDir()
-              const filePath = join(outputDir, input.filename)
-              const ext = extname(input.filename).toLowerCase()
-              if (['.html', '.htm', '.md', '.txt', '.csv', '.json', '.xml', '.svg'].includes(ext)) {
-                const content = await readFile(filePath, 'utf-8')
-                result = `Contenuto di ${input.filename}:\n\n${content}`
-              } else {
-                result = `Il file ${input.filename} è in formato binario (${ext}) — non è leggibile direttamente. Per modificarlo ricrealo usando il tool di scrittura appropriato basandoti sul contesto della conversazione.`
-              }
-            } catch (e) {
-              result = `File non trovato nella cartella output: ${input.filename}`
-            }
-          } else if (toolUse.name === 'fetch_url') {
-            this.sendStatus(`🌐 Lettura pagina: ${input.url}`)
-            try {
-              result = await fetchUrl(input.url)
-            } catch (e) {
-              result = `Impossibile raggiungere ${input.url}: ${e instanceof Error ? e.message : String(e)}`
-            }
-          } else if (
-            toolUse.name === 'write_deliverable' ||
-            toolUse.name === 'write_html' ||
-            toolUse.name === 'write_word' ||
-            toolUse.name === 'write_pdf' ||
-            toolUse.name === 'write_presentation' ||
-            toolUse.name === 'write_excel'
-          ) {
-            const icon = toolUse.name === 'write_pdf' ? '📕' : toolUse.name === 'write_word' ? '📘' : toolUse.name === 'write_presentation' ? '📊' : toolUse.name === 'write_excel' ? '📗' : '📄'
-            this.sendStatus(`${icon} Scrittura: ${input.filename}`)
-            try {
-              const outputDir = await this.resolveOutputDir()
-              let written: DeliverableWritten
-              if (toolUse.name === 'write_word') {
-                written = await writeWord(outputDir, input.filename, input.content)
-              } else if (toolUse.name === 'write_pdf') {
-                written = await writePdf(outputDir, input.filename, input.content)
-              } else if (toolUse.name === 'write_presentation') {
-                written = await writePresentation(outputDir, input.filename, input.content)
-              } else if (toolUse.name === 'write_excel') {
-                written = await writeExcel(outputDir, input.filename, input.content)
-              } else {
-                written = await writeDeliverable(outputDir, input.filename, input.content)
-              }
-              deliverables.push(written)
-              result = `Deliverable salvato in: ${written.path}`
-              this.mainWindow.webContents.send('agent:deliverable', written)
-            } catch (e) {
-              result = `Errore nel salvataggio: ${e instanceof Error ? e.message : String(e)}`
-            }
-          } else if (toolUse.name === 'save_client_info') {
-            if (!this.clientId) {
-              result = 'Nessun cliente associato a questa conversazione. Associa un cliente dall\'AssetPanel prima di salvare informazioni brand.'
-            } else {
-              try {
-                const updated = await updateClientField(this.clientId, input.field, input.value)
-                if (updated) {
-                  result = `Profilo cliente aggiornato: ${input.field} = "${input.value}". Le informazioni sono salvate per tutte le future conversazioni con ${updated.name}.`
-                  this.mainWindow.webContents.send('client:updated', this.clientId)
-                } else {
-                  result = `Cliente non trovato (id: ${this.clientId}).`
-                }
-              } catch (e) {
-                result = `Errore salvataggio profilo: ${e instanceof Error ? e.message : String(e)}`
-              }
-            }
-          } else if (toolUse.name === 'generate_image') {
-            this.sendStatus(`🎨 Generazione immagine: ${input.filename}`)
-            const currentKey = loadOpenAiKey()
-            if (!currentKey) {
-              result = 'Generazione immagini non disponibile: configura la OpenAI API key nelle Impostazioni.'
-            } else {
-              try {
-                const outputDir = await this.resolveOutputDir()
-                const img = await generateImage(outputDir, input.filename, input.prompt, currentKey)
-                deliverables.push({ filename: img.filename, path: img.path })
-                result = `Immagine generata e salvata in: ${img.path}`
-                this.mainWindow.webContents.send('agent:deliverable', { filename: img.filename, path: img.path })
-                this.mainWindow.webContents.send('agent:image', { filename: img.filename, base64: img.base64 })
-              } catch (e) {
-                const msg = e instanceof Error ? e.message : String(e)
-                result = `Errore generazione immagine: ${msg}. Controlla che la OpenAI key sia valida e che l'account abbia crediti disponibili.`
-              }
-            }
-          } else {
-            result = `Tool "${toolUse.name}" non riconosciuto.`
-          }
-
-          this.mainWindow.webContents.send('agent:status', null) // clear after each tool
-          toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: imageContent ?? result })
+        await Promise.all(
+          parallelSafe.map(async (t) => {
+            resultsById.set(t.id, await this.executeToolUse(t, deliverables))
+          })
+        )
+        for (const t of sequential) {
+          resultsById.set(t.id, await this.executeToolUse(t, deliverables))
         }
 
-        this.conversation.push({ role: 'user', content: toolResults })
-      } else {
-        break
+        this.mainWindow.webContents.send('agent:status', null)
+        // Tutti i tool_result in un unico messaggio user, nell'ordine originale
+        this.conversation.push({
+          role: 'user',
+          content: toolUseBlocks.map((t) => resultsById.get(t.id)!)
+        })
+        continue
       }
+
+      // Turno server ancora in corso: rispedire la conversazione per continuare
+      if (message.stop_reason === 'pause_turn') continue
+
+      break // end_turn o altro stop
     }
 
     return deliverables
+  }
+
+  private async executeToolUse(
+    toolUse: Anthropic.ToolUseBlock,
+    deliverables: DeliverableWritten[]
+  ): Promise<Anthropic.ToolResultBlockParam> {
+    if (this.cancelled) {
+      return { type: 'tool_result', tool_use_id: toolUse.id, content: 'Operazione annullata.' }
+    }
+
+    const input = toolUse.input as Record<string, string>
+    let result: string = ''
+    let imageContent: (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[] | null = null
+
+    if (toolUse.name === 'read_source_file') {
+      this.sendStatus(`📖 Lettura file sorgente: ${input.filename}`)
+      const fileResult = await readSourceFileResult(this.sourceFiles, input.filename)
+      if (fileResult.kind === 'image') {
+        imageContent = [
+          {
+            type: 'image' as const,
+            source: { type: 'base64' as const, media_type: fileResult.mediaType, data: fileResult.base64 }
+          },
+          {
+            type: 'text' as const,
+            text: `Immagine "${fileResult.name}" caricata. Analizza: colori dominanti (fornisci HEX approssimati), stile grafico (minimal/bold/luxury/corporate), tipografia (serif/sans-serif, peso visivo), mood e uso previsto (logo, illustrazione, foto, moodboard reference). Se trovi chiari colori brand HEX, salvali subito con save_client_info.`
+          }
+        ]
+      } else {
+        result = fileResult.content
+      }
+    } else if (toolUse.name === 'read_output_file') {
+      this.sendStatus(`📂 Lettura output: ${input.filename}`)
+      try {
+        const outputDir = await this.resolveOutputDir()
+        const filePath = join(outputDir, input.filename)
+        const ext = extname(input.filename).toLowerCase()
+        if (['.html', '.htm', '.md', '.txt', '.csv', '.json', '.xml', '.svg'].includes(ext)) {
+          const content = await readFile(filePath, 'utf-8')
+          result = `Contenuto di ${input.filename}:\n\n${content}`
+        } else {
+          result = `Il file ${input.filename} è in formato binario (${ext}) — non è leggibile direttamente. Per modificarlo ricrealo usando il tool di scrittura appropriato basandoti sul contesto della conversazione.`
+        }
+      } catch (e) {
+        result = `File non trovato nella cartella output: ${input.filename}`
+      }
+    } else if (toolUse.name === 'fetch_url') {
+      this.sendStatus(`🌐 Lettura pagina: ${input.url}`)
+      try {
+        result = await fetchUrl(input.url)
+      } catch (e) {
+        result = `Impossibile raggiungere ${input.url}: ${e instanceof Error ? e.message : String(e)}`
+      }
+    } else if (
+      toolUse.name === 'write_deliverable' ||
+      toolUse.name === 'write_html' ||
+      toolUse.name === 'write_word' ||
+      toolUse.name === 'write_pdf' ||
+      toolUse.name === 'write_presentation' ||
+      toolUse.name === 'write_excel'
+    ) {
+      const icon = toolUse.name === 'write_pdf' ? '📕' : toolUse.name === 'write_word' ? '📘' : toolUse.name === 'write_presentation' ? '📊' : toolUse.name === 'write_excel' ? '📗' : '📄'
+      this.sendStatus(`${icon} Scrittura: ${input.filename}`)
+      try {
+        const outputDir = await this.resolveOutputDir()
+        let written: DeliverableWritten
+        if (toolUse.name === 'write_word') {
+          written = await writeWord(outputDir, input.filename, input.content)
+        } else if (toolUse.name === 'write_pdf') {
+          written = await writePdf(outputDir, input.filename, input.content)
+        } else if (toolUse.name === 'write_presentation') {
+          written = await writePresentation(outputDir, input.filename, input.content)
+        } else if (toolUse.name === 'write_excel') {
+          written = await writeExcel(outputDir, input.filename, input.content)
+        } else {
+          written = await writeDeliverable(outputDir, input.filename, input.content)
+        }
+        deliverables.push(written)
+        result = `Deliverable salvato in: ${written.path}`
+        this.mainWindow.webContents.send('agent:deliverable', written)
+      } catch (e) {
+        result = `Errore nel salvataggio: ${e instanceof Error ? e.message : String(e)}`
+      }
+    } else if (toolUse.name === 'save_client_info') {
+      if (!this.clientId) {
+        result = 'Nessun cliente associato a questa conversazione. Associa un cliente dall\'AssetPanel prima di salvare informazioni brand.'
+      } else {
+        try {
+          const updated = await updateClientField(this.clientId, input.field, input.value)
+          if (updated) {
+            result = `Profilo cliente aggiornato: ${input.field} = "${input.value}". Le informazioni sono salvate per tutte le future conversazioni con ${updated.name}.`
+            this.mainWindow.webContents.send('client:updated', this.clientId)
+          } else {
+            result = `Cliente non trovato (id: ${this.clientId}).`
+          }
+        } catch (e) {
+          result = `Errore salvataggio profilo: ${e instanceof Error ? e.message : String(e)}`
+        }
+      }
+    } else if (toolUse.name === 'generate_image') {
+      this.sendStatus(`🎨 Generazione immagine: ${input.filename}`)
+      const currentKey = loadOpenAiKey()
+      if (!currentKey) {
+        result = 'Generazione immagini non disponibile: configura la OpenAI API key nelle Impostazioni.'
+      } else {
+        try {
+          const outputDir = await this.resolveOutputDir()
+          const img = await generateImage(outputDir, input.filename, input.prompt, currentKey)
+          deliverables.push({ filename: img.filename, path: img.path })
+          result = `Immagine generata e salvata in: ${img.path}`
+          this.mainWindow.webContents.send('agent:deliverable', { filename: img.filename, path: img.path })
+          this.mainWindow.webContents.send('agent:image', { filename: img.filename, base64: img.base64 })
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          result = `Errore generazione immagine: ${msg}. Controlla che la OpenAI key sia valida e che l'account abbia crediti disponibili.`
+        }
+      }
+    } else {
+      result = `Tool "${toolUse.name}" non riconosciuto.`
+    }
+
+    return { type: 'tool_result', tool_use_id: toolUse.id, content: imageContent ?? result }
   }
 
   getLastAssistantText(): string {

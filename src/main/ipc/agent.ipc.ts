@@ -5,7 +5,7 @@ import Anthropic, { RateLimitError } from '@anthropic-ai/sdk'
 import { extractText } from '../agent/tools/read-source-file'
 import { loadApiKey } from '../storage/secure-storage'
 import { loadAppSettings } from '../storage/app-settings'
-import { Orchestrator } from '../agent/orchestrator'
+import { Orchestrator, MODEL_SONNET } from '../agent/orchestrator'
 import {
   listConversations,
   getConversation,
@@ -165,7 +165,7 @@ async function resynthesizeContext(
   try {
     const client = new Anthropic({ apiKey })
     const response = await client.messages.create({
-      model: 'claude-opus-4-8',
+      model: MODEL_SONNET,
       max_tokens: 4096,
       system: SYNTHESIS_PROMPT,
       messages: [{ role: 'user', content: contentBlocks }]
