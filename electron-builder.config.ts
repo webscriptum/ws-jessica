@@ -25,8 +25,9 @@ const config: Configuration = {
     icon: 'resources/icon.ico'
   },
   nsis: {
-    oneClick: false,
-    allowToChangeInstallationDirectory: true
+    // oneClick è richiesto per un auto-update affidabile (install silenzioso su quit)
+    oneClick: true,
+    artifactName: '${name}-Setup-${version}.${ext}'
   }
 }
 

@@ -261,10 +261,11 @@ export default function SettingsScreen(): JSX.Element {
               <button
                 className="btn-update"
                 onClick={handleCheckUpdate}
-                disabled={updaterStatus === 'checking' || updaterStatus === 'downloading'}
+                disabled={updaterStatus === 'checking' || updaterStatus === 'downloading' || updaterStatus === 'available'}
               >
                 {updaterStatus === 'checking' ? 'Controllo…'
-                 : updaterStatus === 'downloading' ? 'Scaricamento…'
+                 : updaterStatus === 'downloading' || updaterStatus === 'available' ? 'Scaricamento…'
+                 : updaterStatus === 'error' ? 'Riprova'
                  : 'Verifica aggiornamenti'}
               </button>
             )}

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell, dialog, session, ipcMain, screen } from 'electron'
 import { join } from 'path'
 import { autoUpdater } from 'electron-updater'
+import log from 'electron-log/main'
 import { registerAgentIpc } from './ipc/agent.ipc'
 import { registerSettingsIpc } from './ipc/settings.ipc'
 import { registerVoiceIpc } from './ipc/voice.ipc'
@@ -88,7 +89,13 @@ function emitUpdaterStatus(status: UpdaterStatus, message: string, version?: str
   mainWindow?.webContents.send('updater:status', { status, message, version })
 }
 
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
+
 function setupAutoUpdater(): void {
+  // Log persistenti in %APPDATA%\ws-jessica\logs\main.log
+  log.transports.file.level = 'info'
+  autoUpdater.logger = log
+
   if (!app.isPackaged) return
 
   autoUpdater.on('checking-for-update', () => {
@@ -120,17 +127,25 @@ function setupAutoUpdater(): void {
         defaultId: 0
       })
       .then(({ response }) => {
-        if (response === 0) autoUpdater.quitAndInstall()
+        if (response === 0) autoUpdater.quitAndInstall(true, true)
       })
   })
 
   autoUpdater.on('error', (err) => {
+    log.error('Errore auto-updater:', err)
     emitUpdaterStatus('error', `Errore aggiornamento: ${err.message}`)
   })
 
   autoUpdater.checkForUpdates().catch((err) => {
+    log.error('Errore controllo aggiornamenti:', err)
     emitUpdaterStatus('error', `Errore controllo aggiornamenti: ${err.message}`)
   })
+
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      log.error('Errore controllo aggiornamenti periodico:', err)
+    })
+  }, UPDATE_CHECK_INTERVAL_MS)
 }
 
 function registerUpdaterIpc(): void {
@@ -149,7 +164,7 @@ function registerUpdaterIpc(): void {
   })
 
   ipcMain.handle('updater:install', () => {
-    autoUpdater.quitAndInstall()
+    autoUpdater.quitAndInstall(true, true)
   })
 }
 
