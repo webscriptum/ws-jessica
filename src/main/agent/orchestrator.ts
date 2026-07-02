@@ -1,9 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { dialog, app } from 'electron'
 import type { BrowserWindow } from 'electron'
-import { readFile } from 'fs/promises'
-import { join, extname } from 'path'
+import { join } from 'path'
 import { readSourceFileResult } from './tools/read-source-file'
+import { readOutputFileText } from './tools/read-output-file'
 import { writeDeliverable } from './tools/write-deliverable'
 import { writeWord } from './tools/write-word'
 import { writePdf } from './tools/write-pdf'
@@ -73,9 +73,9 @@ Approccio generale:
 - Offri proattivamente varianti e alternative quando utile
 - Segnala esplicitamente se mancano informazioni necessarie
 
-Auto-revisione — dopo aver prodotto un deliverable importante (PDF, PPTX, XLSX):
-1. Usa read_output_file per rileggere il file appena creato
-2. Verifica: i colori corrispondono al brand? la struttura è completa? ci sono sezioni mancanti o errori evidenti?
+Auto-revisione — dopo aver prodotto un deliverable importante (PDF, DOCX, XLSX):
+1. Usa read_output_file per rileggere il file appena creato (testo/dati estratti; PPTX non è rileggibile — per quelli verifica solo la struttura del contenuto che hai inviato)
+2. Verifica: struttura completa? sezioni mancanti? refusi? dati coerenti?
 3. Se trovi problemi significativi, produci autonomamente una versione corretta (verrà salvata come -v2 automaticamente)
 4. Segnala all'utente solo se hai fatto correzioni, specificando cosa hai migliorato
 
@@ -127,7 +127,9 @@ NON usare per HTML (→ write_html), PDF (→ write_pdf), Word (→ write_word),
   },
   {
     name: 'write_word',
-    description: 'Salva un deliverable come documento Word (.docx). Per documenti professionali da condividere con il team o il cliente.',
+    description: `Salva un deliverable come documento Word (.docx) con stile brand. Per documenti professionali da condividere: contratti, manuali, lettere, brief formali.
+Prima riga opzionale [TEMA:#primary,#accent] per i colori brand (titoli e tabelle) e [FONT:Nome Font] per il font.
+Markdown supportato: # titolo documento (grande, colorato), ##/### sezioni, elenchi puntati e numerati, **grassetto**, tabelle | col | col |.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -164,7 +166,8 @@ Font in pt (non px): titoli 28-48pt, sottotitoli 12-16pt, corpo 9.5-10.5pt.
 Usa i colori del cliente dal contesto — non i colori Webscriptum.
 
 ━━ MODALITÀ MARKDOWN (report, note, bozze) ━━
-[COLORI:#primary,#dark,#neutral] — prima riga opzionale per i colori
+[TEMA:#primary,#dark,#neutral] — prima riga opzionale per i colori brand
+[FONT:Nome Font] — riga opzionale per il font brand (Google Fonts)
 # Titolo → copertina a pagina intera  |  ## Sezione → banda colorata full-width
 ### Elemento → card con bordo  |  [IMG] → placeholder immagine  |  --- → interruzione pagina`,
     input_schema: {
@@ -275,7 +278,7 @@ POST GRAFICO SOCIAL — usa dimensioni fisse (apribile nel browser, screenshotta
   },
   {
     name: 'read_output_file',
-    description: `Rileggi un file già prodotto nella cartella output per modificarlo o aggiornarlo. Restituisce il contenuto testuale del file (funziona bene per .html, .md, .txt, .csv, .json; per PDF/DOCX/PPTX restituisce il testo estratto). Dopo aver letto il file, usa il tool di scrittura appropriato per salvare la versione modificata (verrà salvata automaticamente come -v2, -v3 ecc.).`,
+    description: `Rileggi un file già prodotto nella cartella output per verificarlo (auto-revisione) o modificarlo. Restituisce il contenuto testuale: formati testuali (.html, .md, .txt, .csv, .json, .xml, .svg) integrali; per PDF, DOCX e XLSX il testo/dati estratti (la resa grafica non è visibile). PPTX e immagini NON sono leggibili. Dopo la lettura, usa il tool di scrittura appropriato per salvare la versione corretta (verrà salvata automaticamente come -v2, -v3 ecc.).`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -378,6 +381,9 @@ function buildClientProfileSection(p: ClientProfile): string {
     lines.push('')
     lines.push(`⚡ Usa SEMPRE [TEMA:${tema}] per tutti i deliverable visivi di questo cliente.`)
     lines.push(`   Non chiedere i colori — li hai già. Non usare i colori Webscriptum.`)
+  }
+  if (b.fonts?.length) {
+    lines.push(`⚡ Usa SEMPRE [FONT:${b.fonts[0]}] insieme a [TEMA] nei deliverable (Word, PDF, PPTX, Excel).`)
   }
   if (!colorLine) {
     lines.push('')
@@ -674,16 +680,9 @@ export class Orchestrator {
       this.sendStatus(`📂 Lettura output: ${input.filename}`)
       try {
         const outputDir = await this.resolveOutputDir()
-        const filePath = join(outputDir, input.filename)
-        const ext = extname(input.filename).toLowerCase()
-        if (['.html', '.htm', '.md', '.txt', '.csv', '.json', '.xml', '.svg'].includes(ext)) {
-          const content = await readFile(filePath, 'utf-8')
-          result = `Contenuto di ${input.filename}:\n\n${content}`
-        } else {
-          result = `Il file ${input.filename} è in formato binario (${ext}) — non è leggibile direttamente. Per modificarlo ricrealo usando il tool di scrittura appropriato basandoti sul contesto della conversazione.`
-        }
+        result = await readOutputFileText(outputDir, input.filename)
       } catch (e) {
-        result = `File non trovato nella cartella output: ${input.filename}`
+        result = `Impossibile leggere ${input.filename}: ${e instanceof Error ? e.message : String(e)}`
       }
     } else if (toolUse.name === 'fetch_url') {
       this.sendStatus(`🌐 Lettura pagina: ${input.url}`)

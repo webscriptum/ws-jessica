@@ -1,6 +1,7 @@
 import { mkdir } from 'fs/promises'
 import { join } from 'path'
 import { resolveUniqueFilename } from './resolve-unique-filename'
+import { parseBrandDirectives } from './brand-directives'
 import pptxgen from 'pptxgenjs'
 import type { DeliverableWritten } from '../../../shared/types'
 
@@ -10,6 +11,7 @@ interface Theme {
   primary: string  // hex without #
   accent: string
   light: string
+  font: string
 }
 
 type SlideType = 'COVER' | 'SECTION' | 'CONTENT' | 'QUOTE' | 'TWO_COL'
@@ -49,9 +51,15 @@ function textOn(hex: string): string {
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
 
-function parseContent(content: string): { theme: Theme; slides: SlideData[] } {
-  const DEFAULT: Theme = { primary: '2C3E50', accent: '44B8AD', light: 'F0F4F4' }
-  let theme = { ...DEFAULT }
+function parseContent(raw: string): { theme: Theme; slides: SlideData[] } {
+  const DEFAULT: Theme = { primary: '2C3E50', accent: '44B8AD', light: 'F0F4F4', font: 'Helvetica Neue' }
+  const { theme: brandTheme, font: brandFont, content } = parseBrandDirectives(raw)
+  let theme: Theme = {
+    primary: brandTheme?.[0] ? toHex(brandTheme[0]) : DEFAULT.primary,
+    accent: brandTheme?.[1] ? toHex(brandTheme[1]) : DEFAULT.accent,
+    light: brandTheme?.[2] ? toHex(brandTheme[2]) : DEFAULT.light,
+    font: brandFont ?? DEFAULT.font
+  }
 
   const slides: SlideData[] = []
   let current: SlideData | null = null
@@ -67,6 +75,7 @@ function parseContent(content: string): { theme: Theme; slides: SlideData[] } {
       if (m) {
         const parts = m[1].split(',').map((c) => toHex(c))
         theme = {
+          ...theme,
           primary: parts[0] || DEFAULT.primary,
           accent: parts[1] || DEFAULT.accent,
           light: parts[2] || DEFAULT.light
@@ -156,7 +165,7 @@ function addCover(pres: pptxgen, data: SlideData, theme: Theme): void {
   slide.addText(title, {
     x: 0.65, y: 1.8, w: W - 0.9, h: 2.8,
     fontSize: 44, bold: true, color: onPrimary,
-    fontFace: 'Helvetica Neue', align: 'left', valign: 'middle', wrap: true
+    fontFace: theme.font, align: 'left', valign: 'middle', wrap: true
   })
 
   // Subtitle
@@ -164,7 +173,7 @@ function addCover(pres: pptxgen, data: SlideData, theme: Theme): void {
     slide.addText(subtitle, {
       x: 0.65, y: 4.8, w: W - 0.9, h: 0.9,
       fontSize: 20, color: theme.accent,
-      fontFace: 'Helvetica Neue', align: 'left', italic: true
+      fontFace: theme.font, align: 'left', italic: true
     })
   }
 }
@@ -180,14 +189,14 @@ function addSection(pres: pptxgen, data: SlideData, theme: Theme, num: number): 
   slide.addText(num < 10 ? `0${num}` : `${num}`, {
     x: -0.3, y: 0.8, w: 5.0, h: 5.0,
     fontSize: 180, bold: true, color: numColor,
-    fontFace: 'Helvetica Neue', align: 'left', valign: 'middle'
+    fontFace: theme.font, align: 'left', valign: 'middle'
   })
 
   // Title
   slide.addText(title, {
     x: 1.0, y: 2.3, w: W - 1.5, h: 3.0,
     fontSize: 36, bold: true, color: textOn(theme.primary),
-    fontFace: 'Helvetica Neue', align: 'left', valign: 'middle', wrap: true
+    fontFace: theme.font, align: 'left', valign: 'middle', wrap: true
   })
 }
 
@@ -208,7 +217,7 @@ function addContent(pres: pptxgen, data: SlideData, theme: Theme, pageNum: numbe
   slide.addText(title, {
     x: 0.5, y: 0.18, w: W - 1.0, h: 0.88,
     fontSize: 28, bold: true, color: theme.primary,
-    fontFace: 'Helvetica Neue', align: 'left', valign: 'middle'
+    fontFace: theme.font, align: 'left', valign: 'middle'
   })
 
   // Content area
@@ -222,14 +231,14 @@ function addContent(pres: pptxgen, data: SlideData, theme: Theme, pageNum: numbe
     ])
     slide.addText(bulletRuns, {
       x: 0.5, y: contentY, w: W - 1.0, h: contentH,
-      fontFace: 'Helvetica Neue', valign: 'top',
+      fontFace: theme.font, valign: 'top',
       lineSpacingMultiple: 1.65
     })
   } else if (data.bodyLines.length > 0) {
     slide.addText(data.bodyLines.join('\n'), {
       x: 0.5, y: contentY, w: W - 1.0, h: contentH,
       fontSize: 15, color: '2F2F2F',
-      fontFace: 'Helvetica Neue', valign: 'top', wrap: true,
+      fontFace: theme.font, valign: 'top', wrap: true,
       lineSpacingMultiple: 1.5
     })
   }
@@ -238,7 +247,7 @@ function addContent(pres: pptxgen, data: SlideData, theme: Theme, pageNum: numbe
   slide.addText(`${pageNum}`, {
     x: W - 0.75, y: H - 0.42, w: 0.6, h: 0.3,
     fontSize: 9, color: 'AAAAAA', align: 'right',
-    fontFace: 'Helvetica Neue'
+    fontFace: theme.font
   })
 }
 
@@ -262,7 +271,7 @@ function addQuote(pres: pptxgen, data: SlideData, theme: Theme): void {
   slide.addText(quoteText, {
     x: 1.2, y: 1.6, w: W - 2.4, h: 3.8,
     fontSize: 22, color: theme.primary, italic: true,
-    fontFace: 'Helvetica Neue', align: 'center', valign: 'middle', wrap: true,
+    fontFace: theme.font, align: 'center', valign: 'middle', wrap: true,
     lineSpacingMultiple: 1.5
   })
 
@@ -271,7 +280,7 @@ function addQuote(pres: pptxgen, data: SlideData, theme: Theme): void {
     slide.addText(`— ${author}`, {
       x: 1.2, y: 5.6, w: W - 2.4, h: 0.6,
       fontSize: 12, color: '777777',
-      fontFace: 'Helvetica Neue', align: 'center'
+      fontFace: theme.font, align: 'center'
     })
   }
 }
@@ -293,7 +302,7 @@ function addTwoCol(pres: pptxgen, data: SlideData, theme: Theme, pageNum: number
   slide.addText(title, {
     x: 0.5, y: 0.18, w: W - 1.0, h: 0.88,
     fontSize: 24, bold: true, color: theme.primary,
-    fontFace: 'Helvetica Neue', align: 'left', valign: 'middle'
+    fontFace: theme.font, align: 'left', valign: 'middle'
   })
 
   const colY = 1.25
@@ -304,7 +313,7 @@ function addTwoCol(pres: pptxgen, data: SlideData, theme: Theme, pageNum: number
   slide.addText(data.leftLines.join('\n'), {
     x: 0.5, y: colY, w: colW, h: colH,
     fontSize: 14, color: '2F2F2F',
-    fontFace: 'Helvetica Neue', valign: 'top', wrap: true,
+    fontFace: theme.font, valign: 'top', wrap: true,
     lineSpacingMultiple: 1.5
   })
 
@@ -319,7 +328,7 @@ function addTwoCol(pres: pptxgen, data: SlideData, theme: Theme, pageNum: number
   slide.addText(data.rightLines.join('\n'), {
     x: 6.85, y: colY, w: colW, h: colH,
     fontSize: 14, color: '2F2F2F',
-    fontFace: 'Helvetica Neue', valign: 'top', wrap: true,
+    fontFace: theme.font, valign: 'top', wrap: true,
     lineSpacingMultiple: 1.5
   })
 
@@ -327,7 +336,7 @@ function addTwoCol(pres: pptxgen, data: SlideData, theme: Theme, pageNum: number
   slide.addText(`${pageNum}`, {
     x: W - 0.75, y: H - 0.42, w: 0.6, h: 0.3,
     fontSize: 9, color: 'AAAAAA', align: 'right',
-    fontFace: 'Helvetica Neue'
+    fontFace: theme.font
   })
 }
 
@@ -382,7 +391,7 @@ export async function writePresentation(
     slide.addText(filename.replace(/\.pptx$/i, ''), {
       x: 0.5, y: 3.0, w: W - 1.0, h: 1.5,
       fontSize: 28, bold: true, color: '333333',
-      fontFace: 'Helvetica Neue', align: 'center'
+      fontFace: theme.font, align: 'center'
     })
   }
 

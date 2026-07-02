@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs'
 import { mkdir } from 'fs/promises'
 import { join } from 'path'
 import { resolveUniqueFilename } from './resolve-unique-filename'
+import { parseBrandDirectives } from './brand-directives'
 import type { DeliverableWritten } from '../../../shared/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -34,6 +35,62 @@ function lightenArgb(hex: string, amount: number): string {
   return 'FF' + [r, g, b]
     .map((x) => Math.round(x + (255 - x) * amount).toString(16).padStart(2, '0').toUpperCase())
     .join('')
+}
+
+// ─── Tipizzazione celle ───────────────────────────────────────────────────────
+// I numeri arrivano dal modello come testo in formato italiano ("1.234,56",
+// "€ 1.200", "12%", "15/03/2026"): senza conversione Excel non somma né ordina.
+
+interface TypedCell {
+  value: string | number | Date
+  numFmt?: string
+  numeric: boolean
+}
+
+function parseItalianNumber(s: string): number | null {
+  const t = s.trim()
+  // "1.234,56" / "1.234" (migliaia) / "1234,56" / "1234" / "1234.56"
+  if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)) return Number(t.replace(/\./g, '').replace(',', '.'))
+  if (/^-?\d+,\d+$/.test(t)) return Number(t.replace(',', '.'))
+  if (/^-?\d+(\.\d{1,2})?$/.test(t)) return Number(t)
+  return null
+}
+
+function typeCell(raw: string): TypedCell {
+  const t = raw.trim()
+
+  // Valuta: "€ 1.200,50" / "1.200 €"
+  const currency = t.match(/^€\s*(-?[\d.,]+)$/) ?? t.match(/^(-?[\d.,]+)\s*€$/)
+  if (currency) {
+    const n = parseItalianNumber(currency[1])
+    if (n !== null) return { value: n, numFmt: '"€" #,##0.00', numeric: true }
+  }
+
+  // Percentuale: "12%" / "3,5%"
+  const percent = t.match(/^(-?[\d.,]+)\s*%$/)
+  if (percent) {
+    const n = parseItalianNumber(percent[1])
+    if (n !== null) {
+      return { value: n / 100, numFmt: Number.isInteger(n) ? '0%' : '0.0%', numeric: true }
+    }
+  }
+
+  // Data: "15/03/2026" o ISO "2026-03-15"
+  const dmy = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmy) {
+    return { value: new Date(Date.UTC(+dmy[3], +dmy[2] - 1, +dmy[1])), numFmt: 'dd/mm/yyyy', numeric: true }
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) {
+    return { value: new Date(`${t}T00:00:00Z`), numFmt: 'dd/mm/yyyy', numeric: true }
+  }
+
+  // Numero puro
+  const n = parseItalianNumber(t)
+  if (n !== null && t !== '') {
+    return { value: n, numFmt: Number.isInteger(n) ? '#,##0' : '#,##0.00', numeric: true }
+  }
+
+  return { value: raw, numeric: false }
 }
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
@@ -118,7 +175,13 @@ export async function writeExcel(
   const finalFilename = await resolveUniqueFilename(outputDir, rawName)
   const filePath = join(outputDir, finalFilename)
 
-  const { title, theme, headers, rows } = parseContent(content)
+  const { theme: brandTheme, font: brandFont, content: cleaned } = parseBrandDirectives(content)
+  const { title, theme: parsedTheme, headers, rows } = parseContent(cleaned)
+  const theme =
+    brandTheme && brandTheme[0]
+      ? { primary: brandTheme[0], accent: brandTheme[1] || parsedTheme.accent }
+      : parsedTheme
+  const fontName = brandFont ?? 'Helvetica Neue'
 
   const docTitle = title || filename.replace(/\.xlsx$/i, '')
   const primaryArgb = toArgb(theme.primary)
@@ -142,7 +205,7 @@ export async function writeExcel(
   titleRow.height = 34
   const titleCell = titleRow.getCell(1)
   titleCell.value = docTitle
-  titleCell.font = { bold: true, size: 13, color: { argb: onPrimaryArgb }, name: 'Helvetica Neue' }
+  titleCell.font = { bold: true, size: 13, color: { argb: onPrimaryArgb }, name: fontName }
   titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: primaryArgb } }
   titleCell.alignment = { vertical: 'middle', horizontal: 'center' }
   sheet.mergeCells(1, 1, 1, colCount)
@@ -154,7 +217,7 @@ export async function writeExcel(
     headerRow.height = 26
     headers.forEach((_, i) => {
       const cell = headerRow.getCell(i + 1)
-      cell.font = { bold: true, size: 11, color: { argb: onAccentArgb }, name: 'Helvetica Neue' }
+      cell.font = { bold: true, size: 11, color: { argb: onAccentArgb }, name: fontName }
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: accentArgb } }
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: false }
       cell.border = {
@@ -170,13 +233,17 @@ export async function writeExcel(
   rows.forEach((rowData, rowIndex) => {
     const isEven = rowIndex % 2 === 1
     const rowArgb = isEven ? lightRowArgb : 'FFFFFFFF'
-    const excelRow = sheet.addRow(rowData)
+    const typed = rowData.map(typeCell)
+    const excelRow = sheet.addRow(typed.map((c) => c.value))
     excelRow.height = 20
-    rowData.forEach((_, i) => {
+    typed.forEach((typedCell, i) => {
       const cell = excelRow.getCell(i + 1)
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowArgb } }
-      cell.font = { size: 10, name: 'Helvetica Neue' }
-      cell.alignment = { vertical: 'middle', wrapText: true }
+      cell.font = { size: 10, name: fontName }
+      cell.alignment = typedCell.numeric
+        ? { vertical: 'middle', horizontal: 'right' }
+        : { vertical: 'middle', wrapText: true }
+      if (typedCell.numFmt) cell.numFmt = typedCell.numFmt
       cell.border = {
         bottom: { style: 'hair', color: { argb: 'FFDDDDDD' } }
       }

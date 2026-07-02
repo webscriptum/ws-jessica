@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { mkdir, writeFile, unlink } from 'fs/promises'
 import { join } from 'path'
 import { resolveUniqueFilename } from './resolve-unique-filename'
+import { parseBrandDirectives } from './brand-directives'
 import type { DeliverableWritten } from '../../../shared/types'
 
 interface Colors {
@@ -12,20 +13,18 @@ interface Colors {
 
 const DEFAULT_COLORS: Colors = { primary: '#44B8AD', dark: '#1E1E1C', neutral: '#6B6B6B' }
 
-// ─── Color extraction ───────────────────────────────────────────────────────
+// ─── Brand directives ([TEMA]/[COLORI] + [FONT]) ────────────────────────────
 
-function extractColors(md: string): { colors: Colors; content: string } {
-  const match = md.match(/^\[COLORI:([^\]]+)\]\n?/m)
-  if (!match) return { colors: DEFAULT_COLORS, content: md }
-  const parts = match[1].split(',').map((s) => s.trim())
-  return {
-    colors: {
-      primary: parts[0] || DEFAULT_COLORS.primary,
-      dark: parts[1] || DEFAULT_COLORS.dark,
-      neutral: parts[2] || DEFAULT_COLORS.neutral
-    },
-    content: md.replace(match[0], '')
-  }
+function extractBrand(md: string): { colors: Colors; font: string | null; content: string } {
+  const { theme, font, content } = parseBrandDirectives(md)
+  const colors: Colors = theme
+    ? {
+        primary: theme[0] || DEFAULT_COLORS.primary,
+        dark: theme[1] || DEFAULT_COLORS.dark,
+        neutral: theme[2] || DEFAULT_COLORS.neutral
+      }
+    : DEFAULT_COLORS
+  return { colors, font, content }
 }
 
 // ─── Inline markdown (bold, italic, code) ──────────────────────────────────
@@ -171,9 +170,22 @@ function buildBody(content: string): string {
 
 // ─── Full HTML document ────────────────────────────────────────────────────
 
-function buildHtml(content: string, colors: Colors, docTitle: string, isLandscape = false): string {
+function buildHtml(
+  content: string,
+  colors: Colors,
+  docTitle: string,
+  isLandscape = false,
+  brandFont: string | null = null
+): string {
   const body = buildBody(content)
   const pageH = isLandscape ? '210mm' : '297mm'
+  // Font brand via Google Fonts (il caricamento ha già un timeout di 5s a valle)
+  const fontImport = brandFont
+    ? `@import url('https://fonts.googleapis.com/css2?family=${encodeURIComponent(brandFont).replace(/%20/g, '+')}:wght@400;600;700&display=swap');`
+    : ''
+  const fontStack = brandFont
+    ? `'${brandFont}', 'Helvetica Neue', Arial, sans-serif`
+    : `'Helvetica Neue', Arial, sans-serif`
 
   // Luminance check for cover text color
   const hex = colors.primary.replace('#', '')
@@ -190,6 +202,7 @@ function buildHtml(content: string, colors: Colors, docTitle: string, isLandscap
 <meta charset="UTF-8">
 <title>${docTitle}</title>
 <style>
+  ${fontImport}
   /* ── Reset ── */
   *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -199,7 +212,7 @@ function buildHtml(content: string, colors: Colors, docTitle: string, isLandscap
 
   /* ── Base ── */
   body {
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: ${fontStack};
     font-size: 10pt;
     line-height: 1.65;
     color: #1A1A1A;
@@ -437,8 +450,8 @@ export async function writePdf(
   if (isHtml) {
     html = processedContent
   } else {
-    const { colors, content: cleanContent } = extractColors(processedContent)
-    html = buildHtml(cleanContent, colors, docTitle, isLandscape)
+    const { colors, font, content: cleanContent } = extractBrand(processedContent)
+    html = buildHtml(cleanContent, colors, docTitle, isLandscape, font)
   }
 
   await writeFile(tmpHtml, html, 'utf-8')
