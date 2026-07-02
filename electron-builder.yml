@@ -1,0 +1,26 @@
+# Config electron-builder. Deve restare in formato yml/json/js:
+# electron-builder 24.x NON legge file .ts (il vecchio electron-builder.config.ts
+# era silenziosamente ignorato e buildava tutto con i default).
+#
+# appId e productName restano volutamente ai default (com.electron.ws-jessica /
+# ws-jessica): cambiarli ora creerebbe una seconda installazione parallela
+# sui PC che hanno già l'app, rompendo la catena di auto-update.
+directories:
+  buildResources: resources
+files:
+  - out/**/*
+publish:
+  provider: github
+  owner: webscriptum
+  repo: ws-jessica
+win:
+  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: true
+  artifactName: ${name}-Setup-${version}.${ext}
+mac:
+  icon: resources/icon.png

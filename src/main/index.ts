@@ -95,6 +95,9 @@ function setupAutoUpdater(): void {
   // Log persistenti in %APPDATA%\ws-jessica\logs\main.log
   log.transports.file.level = 'info'
   autoUpdater.logger = log
+  // Il download differenziale fallisce con cache baseline stale (sha512 mismatch,
+  // visto in 0.6.3→0.6.4) e ripiega comunque sul download completo: meglio diretto.
+  autoUpdater.disableDifferentialDownload = true
 
   if (!app.isPackaged) return
 

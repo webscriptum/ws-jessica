@@ -6,8 +6,23 @@ on:
       - 'v*'
 
 jobs:
+  # Crea la release draft PRIMA dei job di build: se win e mac partono in
+  # parallelo senza release esistente, ognuno ne crea una propria per lo
+  # stesso tag e gli asset finiscono divisi in due release (successo in v0.6.4).
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create draft release
+        run: gh release view "${{ github.ref_name }}" || gh release create "${{ github.ref_name }}" --draft --title "${{ github.ref_name }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+
   release-windows:
     runs-on: windows-latest
+    needs: create-release
     permissions:
       contents: write
     steps:
@@ -28,6 +43,7 @@ jobs:
 
   release-mac:
     runs-on: macos-latest
+    needs: create-release
     permissions:
       contents: write
     steps:
