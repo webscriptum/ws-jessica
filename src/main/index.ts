@@ -1,6 +1,6 @@
 import { app, BrowserWindow, shell, dialog, session, ipcMain, screen } from 'electron'
 import { join } from 'path'
-import { autoUpdater } from 'electron-updater'
+import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import log from 'electron-log/main'
 import { registerAgentIpc } from './ipc/agent.ipc'
 import { registerSettingsIpc } from './ipc/settings.ipc'
@@ -91,6 +91,27 @@ function emitUpdaterStatus(status: UpdaterStatus, message: string, version?: str
 
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 
+// Il provider GitHub consegna il body della release come HTML: va ridotto
+// a testo semplice per il dialog nativo.
+function formatReleaseNotes(notes: UpdateInfo['releaseNotes']): string {
+  const raw =
+    typeof notes === 'string'
+      ? notes
+      : Array.isArray(notes)
+        ? notes.map((n) => n.note ?? '').join('\n')
+        : ''
+  const text = raw
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  return text.length > 600 ? `${text.slice(0, 600)}…` : text
+}
+
 function setupAutoUpdater(): void {
   // Log persistenti in %APPDATA%\ws-jessica\logs\main.log
   log.transports.file.level = 'info'
@@ -120,12 +141,15 @@ function setupAutoUpdater(): void {
 
   autoUpdater.on('update-downloaded', (info) => {
     emitUpdaterStatus('ready', `Versione ${info.version} pronta. Riavvia per installare.`, info.version)
+    const notes = formatReleaseNotes(info.releaseNotes)
     dialog
       .showMessageBox(mainWindow!, {
         type: 'info',
         title: 'Aggiornamento disponibile',
         message: `WS Jessica ${info.version} è pronta.`,
-        detail: "Riavvia l'app per installare l'aggiornamento.",
+        detail: notes
+          ? `Novità:\n${notes}\n\nRiavvia l'app per installare l'aggiornamento.`
+          : "Riavvia l'app per installare l'aggiornamento.",
         buttons: ['Riavvia ora', 'Più tardi'],
         defaultId: 0
       })

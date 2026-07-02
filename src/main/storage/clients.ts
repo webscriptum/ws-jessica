@@ -60,7 +60,7 @@ export async function updateClientField(
   } else if (field in profile.brand) {
     ;(profile.brand as Record<string, unknown>)[field] = value
   } else {
-    ;(profile as Record<string, unknown>)[field] = value
+    ;(profile as unknown as Record<string, unknown>)[field] = value
   }
   profile.updatedAt = new Date().toISOString()
   data[id] = profile

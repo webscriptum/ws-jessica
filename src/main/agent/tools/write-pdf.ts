@@ -39,7 +39,7 @@ function inlineFormat(text: string): string {
 
 // ─── Content → HTML ────────────────────────────────────────────────────────
 
-function buildBody(content: string, colors: Colors, docTitle: string): string {
+function buildBody(content: string): string {
   const lines = content.split('\n')
   const parts: string[] = []
 
@@ -172,7 +172,7 @@ function buildBody(content: string, colors: Colors, docTitle: string): string {
 // ─── Full HTML document ────────────────────────────────────────────────────
 
 function buildHtml(content: string, colors: Colors, docTitle: string, isLandscape = false): string {
-  const body = buildBody(content, colors, docTitle)
+  const body = buildBody(content)
   const pageH = isLandscape ? '210mm' : '297mm'
 
   // Luminance check for cover text color

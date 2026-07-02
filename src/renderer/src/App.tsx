@@ -40,7 +40,9 @@ export default function App(): JSX.Element {
             id: conv.id,
             title: conv.title,
             sourceFiles: conv.sourceFiles,
+            sourceUrls: conv.sourceUrls,
             contextSummary: conv.contextSummary,
+            outputFolder: conv.outputFolder,
             updatedAt: conv.updatedAt,
             messageCount: 0
           }
@@ -81,7 +83,9 @@ export default function App(): JSX.Element {
             id: conv.id,
             title: conv.title,
             sourceFiles: conv.sourceFiles,
+            sourceUrls: conv.sourceUrls,
             contextSummary: conv.contextSummary,
+            outputFolder: conv.outputFolder,
             updatedAt: conv.updatedAt,
             messageCount: 0
           }

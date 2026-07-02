@@ -15,7 +15,7 @@ jobs:
       contents: write
     steps:
       - name: Create draft release
-        run: gh release view "${{ github.ref_name }}" || gh release create "${{ github.ref_name }}" --draft --title "${{ github.ref_name }}"
+        run: gh release view "${{ github.ref_name }}" || gh release create "${{ github.ref_name }}" --draft --title "${{ github.ref_name }}" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -35,6 +35,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Build and publish
         run: npx electron-vite build && npx electron-builder --win --publish always

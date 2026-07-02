@@ -30,6 +30,7 @@ export async function listConversations(): Promise<ConversationSummary[]> {
         title: conv.title,
         clientId: conv.clientId,
         sourceFiles: conv.sourceFiles ?? [],
+        sourceUrls: conv.sourceUrls ?? [],
         contextSummary: conv.contextSummary ?? null,
         outputFolder: conv.outputFolder ?? null,
         updatedAt: conv.updatedAt,

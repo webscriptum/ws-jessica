@@ -1,10 +1,11 @@
 {
   "name": "ws-jessica",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Agente AI per agenzia creativa - Webscriptum",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "cross-env ELECTRON_RUN_AS_NODE= electron-vite dev",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "build": "electron-vite build",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",

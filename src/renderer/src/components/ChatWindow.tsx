@@ -133,9 +133,9 @@ export default function ChatWindow({
           const audio = new Audio(`data:audio/mpeg;base64,${result.base64}`)
           currentAudioRef.current = audio
           await new Promise<void>((r) => {
-            audio.onended = r
-            audio.onerror = r
-            audio.play().catch(r)
+            audio.onended = (): void => r()
+            audio.onerror = (): void => r()
+            audio.play().catch(() => r())
           })
           currentAudioRef.current = null
         }
