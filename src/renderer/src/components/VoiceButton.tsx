@@ -7,6 +7,46 @@ interface Props {
 
 type RecordState = 'idle' | 'recording' | 'transcribing'
 
+// L'audio registrato (webm/opus) viene convertito in WAV PCM16 mono 16kHz:
+// formato unico accettato sia dal Whisper locale sia dall'API OpenAI.
+async function webmToWav16k(webm: ArrayBuffer): Promise<ArrayBuffer> {
+  const probeCtx = new AudioContext()
+  const decoded = await probeCtx.decodeAudioData(webm)
+  await probeCtx.close()
+
+  const offline = new OfflineAudioContext(1, Math.ceil(decoded.duration * 16000), 16000)
+  const source = offline.createBufferSource()
+  source.buffer = decoded
+  source.connect(offline.destination)
+  source.start()
+  const rendered = await offline.startRendering()
+  const samples = rendered.getChannelData(0)
+
+  const wav = new ArrayBuffer(44 + samples.length * 2)
+  const view = new DataView(wav)
+  const writeAscii = (offset: number, s: string): void => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i))
+  }
+  writeAscii(0, 'RIFF')
+  view.setUint32(4, 36 + samples.length * 2, true)
+  writeAscii(8, 'WAVE')
+  writeAscii(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true) // PCM
+  view.setUint16(22, 1, true) // mono
+  view.setUint32(24, 16000, true)
+  view.setUint32(28, 16000 * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  writeAscii(36, 'data')
+  view.setUint32(40, samples.length * 2, true)
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]))
+    view.setInt16(44 + i * 2, Math.round(s * 32767), true)
+  }
+  return wav
+}
+
 export default function VoiceButton({ onTranscript, disabled }: Props): JSX.Element {
   const [state, setState] = useState<RecordState>('idle')
   const chunksRef = useRef<Uint8Array[]>([])
@@ -55,7 +95,8 @@ export default function VoiceButton({ onTranscript, disabled }: Props): JSX.Elem
     }
 
     try {
-      const result = await window.electronAPI.transcribeAudio(combined.buffer)
+      const wav = await webmToWav16k(combined.buffer)
+      const result = await window.electronAPI.transcribeAudio(wav)
       if (result.ok && result.text) {
         onTranscript(result.text.trim())
       }

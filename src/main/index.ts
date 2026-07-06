@@ -6,6 +6,7 @@ import { registerAgentIpc } from './ipc/agent.ipc'
 import { registerSettingsIpc } from './ipc/settings.ipc'
 import { registerVoiceIpc } from './ipc/voice.ipc'
 import { registerClientsIpc } from './ipc/clients.ipc'
+import { registerLocalModelIpc } from './ipc/local-model.ipc'
 import { loadAppSettings } from './storage/app-settings'
 
 let mainWindow: BrowserWindow | null = null
@@ -209,8 +210,9 @@ app.whenReady().then(() => {
   const win = mainWindow!
   registerSettingsIpc(win)
   registerAgentIpc(win)
-  registerVoiceIpc()
+  registerVoiceIpc(win)
   registerClientsIpc()
+  registerLocalModelIpc(win)
   registerUpdaterIpc()
   setupAutoUpdater()
 

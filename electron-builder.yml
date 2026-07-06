@@ -9,6 +9,21 @@ directories:
   buildResources: resources
 files:
   - out/**/*
+  # Binari llama.cpp fuori target: CUDA (537MB, nessun PC del team ha GPU
+  # NVIDIA — resta il fallback Vulkan/CPU), arm64 (target win è x64) e le
+  # varianti mac/win non usate. Riabilitare win-arm64 per una build nativa ARM.
+  - "!**/node_modules/@node-llama-cpp/win-x64-cuda/**"
+  - "!**/node_modules/@node-llama-cpp/win-x64-cuda-ext/**"
+  - "!**/node_modules/@node-llama-cpp/win-arm64/**"
+  - "!**/node_modules/@node-llama-cpp/mac-x64/**"
+  - "!**/node_modules/sherpa-onnx-darwin-x64/**"
+  - "!**/node_modules/sherpa-onnx-win-ia32/**"
+# I moduli nativi devono restare fuori dall'asar: i binari .node/.dll/.dylib
+# non sono caricabili dall'archivio (ERR_DLOPEN).
+asarUnpack:
+  - "**/node_modules/node-llama-cpp/**"
+  - "**/node_modules/@node-llama-cpp/**"
+  - "**/node_modules/sherpa-onnx-*/**"
 publish:
   provider: github
   owner: webscriptum
@@ -24,3 +39,12 @@ nsis:
   artifactName: ${name}-Setup-${version}.${ext}
 mac:
   icon: resources/icon.png
+  # La build mac va eseguita su macOS (o CI macOS). zip necessario per
+  # l'auto-update; senza firma Apple l'auto-update su mac NON funziona.
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64

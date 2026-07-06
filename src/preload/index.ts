@@ -83,6 +83,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveSettings: (s: { apiKey?: string; openAiKey?: string; voiceMode?: string }) =>
     ipcRenderer.invoke('settings:save', s),
 
+  // Local AI models
+  listLocalModels: () => ipcRenderer.invoke('localmodel:list'),
+  getLocalHardware: () => ipcRenderer.invoke('localmodel:hardware'),
+  downloadLocalModel: (tier: string) => ipcRenderer.invoke('localmodel:download', tier),
+  cancelLocalModelDownload: (tier: string) => ipcRenderer.invoke('localmodel:cancel', tier),
+  deleteLocalModel: (tier: string) => ipcRenderer.invoke('localmodel:delete', tier),
+  onLocalModelProgress: (cb: (p: { tier: string; downloadedBytes: number; totalBytes: number }) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, p: unknown): void =>
+      cb(p as { tier: string; downloadedBytes: number; totalBytes: number })
+    ipcRenderer.on('localmodel:progress', handler)
+    return () => ipcRenderer.removeListener('localmodel:progress', handler)
+  },
+  onLocalModelDone: (cb: (r: { tier: string; ok: boolean; error?: string }) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, r: unknown): void =>
+      cb(r as { tier: string; ok: boolean; error?: string })
+    ipcRenderer.on('localmodel:done', handler)
+    return () => ipcRenderer.removeListener('localmodel:done', handler)
+  },
+
   // Version & updater
   getVersion: () => ipcRenderer.invoke('app:version'),
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
@@ -111,5 +130,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   speakText: (text: string) => ipcRenderer.invoke('tts:speak', text),
 
   // Voice: STT
-  transcribeAudio: (audioBuffer: ArrayBuffer) => ipcRenderer.invoke('stt:transcribe', audioBuffer)
+  transcribeAudio: (audioBuffer: ArrayBuffer) => ipcRenderer.invoke('stt:transcribe', audioBuffer),
+
+  // Voice: asset locali (Whisper + Piper)
+  getVoiceAssetsStatus: () => ipcRenderer.invoke('voiceassets:status'),
+  downloadVoiceAssets: () => ipcRenderer.invoke('voiceassets:download'),
+  cancelVoiceAssetsDownload: () => ipcRenderer.invoke('voiceassets:cancel'),
+  deleteVoiceAssets: () => ipcRenderer.invoke('voiceassets:delete'),
+  onVoiceAssetsProgress: (cb: (p: { downloadedBytes: number; totalBytes: number }) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, p: unknown): void =>
+      cb(p as { downloadedBytes: number; totalBytes: number })
+    ipcRenderer.on('voiceassets:progress', handler)
+    return () => ipcRenderer.removeListener('voiceassets:progress', handler)
+  },
+  onVoiceAssetsDone: (cb: (r: { ok: boolean; error?: string }) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, r: unknown): void =>
+      cb(r as { ok: boolean; error?: string })
+    ipcRenderer.on('voiceassets:done', handler)
+    return () => ipcRenderer.removeListener('voiceassets:done', handler)
+  }
 })

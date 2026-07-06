@@ -2,6 +2,28 @@ export type VoiceMode = 'off' | 'voice-to-text' | 'conversation'
 export type ModelMode = 'sonnet' | 'opus'
 export type MascotPosition = 'bottom-right' | 'bottom-left'
 export type MascotAvatarSize = 'small' | 'medium' | 'large'
+export type AiProvider = 'cloud' | 'local'
+export type LocalModelTier = 'base' | 'standard' | 'pro'
+
+export interface LocalModelStatus {
+  tier: LocalModelTier
+  label: string
+  description: string
+  approxSizeBytes: number
+  minRamGb: number
+  downloaded: boolean
+  downloading: boolean
+  path: string | null
+}
+
+export interface LocalHardwareInfo {
+  platform: string
+  arch: string
+  totalRamGb: number
+  appleSilicon: boolean
+  recommendedTier: LocalModelTier
+  summary: string
+}
 
 export interface ClientBrand {
   primaryColor?: string
@@ -102,6 +124,9 @@ export interface ElectronAPI {
     hasOpenAiKey: boolean
     voiceMode: VoiceMode
     modelMode: ModelMode
+    aiProvider: AiProvider
+    localModelTier: LocalModelTier
+    localReady: boolean
     mascotMode: boolean
     mascotPosition: MascotPosition
     mascotAvatarSize: MascotAvatarSize
@@ -111,10 +136,23 @@ export interface ElectronAPI {
     openAiKey?: string
     voiceMode?: VoiceMode
     modelMode?: ModelMode
+    aiProvider?: AiProvider
+    localModelTier?: LocalModelTier
     mascotMode?: boolean
     mascotPosition?: MascotPosition
     mascotAvatarSize?: MascotAvatarSize
   }) => Promise<{ ok: boolean }>
+
+  // Local AI models
+  listLocalModels: () => Promise<LocalModelStatus[]>
+  getLocalHardware: () => Promise<LocalHardwareInfo>
+  downloadLocalModel: (tier: LocalModelTier) => Promise<{ ok: boolean; path?: string; error?: string }>
+  cancelLocalModelDownload: (tier: LocalModelTier) => Promise<{ ok: boolean }>
+  deleteLocalModel: (tier: LocalModelTier) => Promise<{ ok: boolean; error?: string }>
+  onLocalModelProgress: (
+    cb: (p: { tier: LocalModelTier; downloadedBytes: number; totalBytes: number }) => void
+  ) => () => void
+  onLocalModelDone: (cb: (r: { tier: LocalModelTier; ok: boolean; error?: string }) => void) => () => void
 
   // Version & updater
   getVersion: () => Promise<string>
@@ -129,8 +167,16 @@ export interface ElectronAPI {
   quitApp: () => Promise<void>
 
   // Voice
-  speakText: (text: string) => Promise<{ ok: boolean; base64?: string; error?: string }>
+  speakText: (text: string) => Promise<{ ok: boolean; base64?: string; mime?: string; error?: string }>
   transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ ok: boolean; text?: string; error?: string }>
+
+  // Voice: asset locali (Whisper + Piper)
+  getVoiceAssetsStatus: () => Promise<{ downloaded: boolean; downloading: boolean; approxSizeBytes: number }>
+  downloadVoiceAssets: () => Promise<{ ok: boolean; error?: string }>
+  cancelVoiceAssetsDownload: () => Promise<{ ok: boolean }>
+  deleteVoiceAssets: () => Promise<{ ok: boolean; error?: string }>
+  onVoiceAssetsProgress: (cb: (p: { downloadedBytes: number; totalBytes: number }) => void) => () => void
+  onVoiceAssetsDone: (cb: (r: { ok: boolean; error?: string }) => void) => () => void
 }
 
 declare global {

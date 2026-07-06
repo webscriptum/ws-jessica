@@ -6,10 +6,14 @@ export type VoiceMode = 'off' | 'voice-to-text' | 'conversation'
 export type ModelMode = 'sonnet' | 'opus'
 export type MascotPosition = 'bottom-right' | 'bottom-left'
 export type MascotAvatarSize = 'small' | 'medium' | 'large'
+export type AiProvider = 'cloud' | 'local'
+export type LocalModelTier = 'base' | 'standard' | 'pro'
 
 export interface AppSettings {
   voiceMode: VoiceMode
   modelMode: ModelMode
+  aiProvider: AiProvider
+  localModelTier: LocalModelTier
   mascotMode: boolean
   mascotPosition: MascotPosition
   mascotAvatarSize: MascotAvatarSize
@@ -18,6 +22,8 @@ export interface AppSettings {
 const DEFAULTS: AppSettings = {
   voiceMode: 'off',
   modelMode: 'sonnet',
+  aiProvider: 'cloud',
+  localModelTier: 'base',
   mascotMode: true,
   mascotPosition: 'bottom-right',
   mascotAvatarSize: 'medium'

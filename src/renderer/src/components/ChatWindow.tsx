@@ -130,7 +130,7 @@ export default function ChatWindow({
       try {
         const result = await window.electronAPI.speakText(text)
         if (result.ok && result.base64) {
-          const audio = new Audio(`data:audio/mpeg;base64,${result.base64}`)
+          const audio = new Audio(`data:${result.mime ?? 'audio/mpeg'};base64,${result.base64}`)
           currentAudioRef.current = audio
           await new Promise<void>((r) => {
             audio.onended = (): void => r()

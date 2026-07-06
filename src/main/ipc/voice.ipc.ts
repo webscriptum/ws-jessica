@@ -1,13 +1,38 @@
-import { ipcMain } from 'electron'
+import { ipcMain, BrowserWindow } from 'electron'
 import { loadOpenAiKey } from '../storage/secure-storage'
+import { loadAppSettings } from '../storage/app-settings'
+import {
+  voiceAssetsReady,
+  voiceAssetsStatus,
+  downloadVoiceAssets,
+  cancelVoiceAssetsDownload,
+  deleteVoiceAssets
+} from '../voice/voice-assets'
+import { localTranscribe, localSpeak } from '../voice/local-voice'
 
-export function registerVoiceIpc(): void {
-  // TTS: text → base64 mp3
+const PROGRESS_THROTTLE_MS = 500
+
+// Voce locale attiva quando il motore AI è locale e gli asset sono scaricati;
+// altrimenti si ripiega su OpenAI se la key c'è.
+function useLocalVoice(): boolean {
+  return loadAppSettings().aiProvider === 'local' && voiceAssetsReady()
+}
+
+const NO_VOICE_ERROR =
+  'Voce non configurata: scarica il pacchetto "Voce locale" nelle Impostazioni oppure inserisci la OpenAI key.'
+
+export function registerVoiceIpc(win: BrowserWindow): void {
+  // TTS: text → base64 audio (wav locale, mp3 OpenAI)
   ipcMain.handle(
     'tts:speak',
-    async (_e, text: string): Promise<{ ok: boolean; base64?: string; error?: string }> => {
+    async (_e, text: string): Promise<{ ok: boolean; base64?: string; mime?: string; error?: string }> => {
+      if (useLocalVoice()) {
+        const result = await localSpeak(text.slice(0, 4096))
+        return { ...result, mime: 'audio/wav' }
+      }
+
       const openAiKey = loadOpenAiKey()
-      if (!openAiKey) return { ok: false, error: 'OpenAI key non configurata' }
+      if (!openAiKey) return { ok: false, error: NO_VOICE_ERROR }
 
       const trimmed = text.slice(0, 4096) // OpenAI TTS max chars
       const response = await fetch('https://api.openai.com/v1/audio/speech', {
@@ -25,23 +50,23 @@ export function registerVoiceIpc(): void {
 
       const buffer = await response.arrayBuffer()
       const base64 = Buffer.from(buffer).toString('base64')
-      return { ok: true, base64 }
+      return { ok: true, base64, mime: 'audio/mpeg' }
     }
   )
 
-  // STT: ArrayBuffer (webm audio) → transcript text via Whisper
+  // STT: ArrayBuffer (WAV PCM16 mono 16kHz dal renderer) → testo
   ipcMain.handle(
     'stt:transcribe',
     async (_e, audioBuffer: ArrayBuffer): Promise<{ ok: boolean; text?: string; error?: string }> => {
+      if (useLocalVoice()) {
+        return localTranscribe(audioBuffer)
+      }
+
       const openAiKey = loadOpenAiKey()
-      if (!openAiKey) return { ok: false, error: 'OpenAI key non configurata' }
+      if (!openAiKey) return { ok: false, error: NO_VOICE_ERROR }
 
       const formData = new FormData()
-      formData.append(
-        'file',
-        new Blob([audioBuffer], { type: 'audio/webm' }),
-        'audio.webm'
-      )
+      formData.append('file', new Blob([audioBuffer], { type: 'audio/wav' }), 'audio.wav')
       formData.append('model', 'whisper-1')
       formData.append('language', 'it')
 
@@ -59,4 +84,24 @@ export function registerVoiceIpc(): void {
       return { ok: true, text: data.text }
     }
   )
+
+  // ── Asset vocali locali (Whisper + Piper) ────────────────────────────────
+
+  ipcMain.handle('voiceassets:status', () => voiceAssetsStatus())
+
+  ipcMain.handle('voiceassets:download', async () => {
+    let lastSent = 0
+    const result = await downloadVoiceAssets((p) => {
+      const now = Date.now()
+      if (now - lastSent < PROGRESS_THROTTLE_MS && p.downloadedBytes < p.totalBytes) return
+      lastSent = now
+      if (!win.isDestroyed()) win.webContents.send('voiceassets:progress', p)
+    })
+    if (!win.isDestroyed()) win.webContents.send('voiceassets:done', result)
+    return result
+  })
+
+  ipcMain.handle('voiceassets:cancel', () => cancelVoiceAssetsDownload())
+
+  ipcMain.handle('voiceassets:delete', () => deleteVoiceAssets())
 }

@@ -1,11 +1,12 @@
 import { ipcMain, dialog, shell, app, BrowserWindow } from 'electron'
 import { readFile, readdir, stat } from 'fs/promises'
 import { basename, extname, join } from 'path'
-import Anthropic, { RateLimitError } from '@anthropic-ai/sdk'
+import { RateLimitError } from '@anthropic-ai/sdk'
+import type Anthropic from '@anthropic-ai/sdk'
 import { extractText } from '../agent/tools/read-source-file'
-import { loadApiKey } from '../storage/secure-storage'
 import { loadAppSettings } from '../storage/app-settings'
-import { Orchestrator, MODEL_SONNET } from '../agent/orchestrator'
+import { Orchestrator } from '../agent/orchestrator'
+import { getProvider } from '../llm'
 import {
   listConversations,
   getConversation,
@@ -16,6 +17,13 @@ import { getClient } from '../storage/clients'
 import type { Conversation, ConversationSummary } from '../../shared/types'
 
 const orchestrators = new Map<string, Orchestrator>()
+
+// Da chiamare quando cambiano provider AI o modello: gli orchestrator in cache
+// tengono il provider e il system prompt del momento della creazione.
+export function resetOrchestrators(): void {
+  for (const o of orchestrators.values()) o.cancel()
+  orchestrators.clear()
+}
 
 const MAX_FILE_CHARS = 50_000
 const MAX_TOTAL_CHARS = 200_000
@@ -47,8 +55,8 @@ function deriveTitle(conv: Conversation): string {
 }
 
 async function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Promise<Orchestrator | null> {
-  const apiKey = loadApiKey()
-  if (!apiKey) return null
+  const provider = getProvider()
+  if (!provider.isReady().ok) return null
   if (!orchestrators.has(conv.id)) {
     const onFolderPicked = async (folder: string): Promise<void> => {
       const fresh = await getConversation(conv.id)
@@ -63,7 +71,8 @@ async function ensureOrchestrator(conv: Conversation, win: BrowserWindow): Promi
     orchestrators.set(
       conv.id,
       new Orchestrator(
-        apiKey,
+        provider,
+        conv.id,
         conv.title,
         conv.sourceFiles,
         conv.contextSummary,
@@ -100,14 +109,16 @@ async function fetchUrlText(url: string): Promise<string> {
 }
 
 async function resynthesizeContext(
-  conv: Conversation,
-  apiKey: string
+  conv: Conversation
 ): Promise<{ summary: string | null; error?: string }> {
+  const provider = getProvider()
   let totalChars = 0
   const contentBlocks: (Anthropic.DocumentBlockParam | Anthropic.TextBlockParam)[] = []
 
   for (const filePath of conv.sourceFiles) {
-    const isPdf = extname(filePath).toLowerCase() === '.pdf'
+    // Solo il cloud legge i PDF nativamente (layout e grafica inclusi);
+    // in locale si estrae il testo con pdf-parse come per gli altri formati.
+    const isPdf = extname(filePath).toLowerCase() === '.pdf' && provider.id === 'anthropic'
     if (isPdf) {
       try {
         const buffer = await readFile(filePath)
@@ -163,19 +174,12 @@ async function resynthesizeContext(
   if (contentBlocks.length === 0) return { summary: null }
 
   try {
-    const client = new Anthropic({ apiKey })
-    const response = await client.messages.create({
-      model: MODEL_SONNET,
-      max_tokens: 4096,
+    const summary = await provider.complete({
       system: SYNTHESIS_PROMPT,
-      messages: [{ role: 'user', content: contentBlocks }]
+      blocks: contentBlocks,
+      maxTokens: 4096
     })
-    const summary =
-      response.content
-        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-        .map((b) => b.text)
-        .join('') || null
-    return { summary }
+    return { summary: summary || null }
   } catch (e) {
     return { summary: null, error: e instanceof Error ? e.message : String(e) }
   }
@@ -251,8 +255,8 @@ export function registerAgentIpc(win: BrowserWindow): void {
       })
       if (pickResult.canceled || pickResult.filePaths.length === 0) return { ok: false }
 
-      const apiKey = loadApiKey()
-      if (!apiKey) return { ok: false, error: 'API key mancante. Configurala nelle Impostazioni.' }
+      const ready = getProvider().isReady()
+      if (!ready.ok) return { ok: false, error: ready.reason }
 
       const conv = await getConversation(convId)
       if (!conv) return { ok: false, error: 'Conversazione non trovata.' }
@@ -266,7 +270,7 @@ export function registerAgentIpc(win: BrowserWindow): void {
         conv.title = basename(conv.sourceFiles[0], '.md').replace(/[-_]/g, ' ')
       }
 
-      const { summary, error } = await resynthesizeContext(conv, apiKey)
+      const { summary, error } = await resynthesizeContext(conv)
       if (error) return { ok: false, error }
 
       conv.contextSummary = summary
@@ -281,7 +285,6 @@ export function registerAgentIpc(win: BrowserWindow): void {
   ipcMain.handle(
     'files:removeFile',
     async (_e, convId: string, path: string): Promise<{ ok: boolean; sourceFiles?: string[]; contextSummary?: string | null }> => {
-      const apiKey = loadApiKey()
       const conv = await getConversation(convId)
       if (!conv) return { ok: false }
 
@@ -290,8 +293,8 @@ export function registerAgentIpc(win: BrowserWindow): void {
 
       if (conv.sourceFiles.length === 0 && conv.sourceUrls.length === 0) {
         conv.contextSummary = null
-      } else if (apiKey) {
-        const { summary } = await resynthesizeContext(conv, apiKey)
+      } else if (getProvider().isReady().ok) {
+        const { summary } = await resynthesizeContext(conv)
         conv.contextSummary = summary
       }
 
@@ -306,8 +309,8 @@ export function registerAgentIpc(win: BrowserWindow): void {
   ipcMain.handle(
     'files:addUrl',
     async (_e, convId: string, url: string): Promise<{ ok: boolean; sourceUrls?: string[]; contextSummary?: string | null; error?: string }> => {
-      const apiKey = loadApiKey()
-      if (!apiKey) return { ok: false, error: 'API key mancante.' }
+      const ready = getProvider().isReady()
+      if (!ready.ok) return { ok: false, error: ready.reason }
 
       const conv = await getConversation(convId)
       if (!conv) return { ok: false, error: 'Conversazione non trovata.' }
@@ -317,7 +320,7 @@ export function registerAgentIpc(win: BrowserWindow): void {
 
       if (!conv.sourceUrls.includes(url)) conv.sourceUrls.push(url)
 
-      const { summary, error } = await resynthesizeContext(conv, apiKey)
+      const { summary, error } = await resynthesizeContext(conv)
       if (error) {
         conv.sourceUrls = conv.sourceUrls.filter((u) => u !== url)
         return { ok: false, error }
@@ -335,7 +338,6 @@ export function registerAgentIpc(win: BrowserWindow): void {
   ipcMain.handle(
     'files:removeUrl',
     async (_e, convId: string, url: string): Promise<{ ok: boolean; sourceUrls?: string[]; contextSummary?: string | null }> => {
-      const apiKey = loadApiKey()
       const conv = await getConversation(convId)
       if (!conv) return { ok: false }
 
@@ -344,8 +346,8 @@ export function registerAgentIpc(win: BrowserWindow): void {
 
       if (conv.sourceFiles.length === 0 && conv.sourceUrls.length === 0) {
         conv.contextSummary = null
-      } else if (apiKey) {
-        const { summary } = await resynthesizeContext(conv, apiKey)
+      } else if (getProvider().isReady().ok) {
+        const { summary } = await resynthesizeContext(conv)
         conv.contextSummary = summary
       }
 
@@ -459,8 +461,9 @@ export function registerAgentIpc(win: BrowserWindow): void {
         return { deliverables: [], conversationTitle: '' }
       }
 
-      if (!loadApiKey()) {
-        win.webContents.send('agent:error', 'API key mancante. Configurala nelle Impostazioni.')
+      const ready = getProvider().isReady()
+      if (!ready.ok) {
+        win.webContents.send('agent:error', ready.reason ?? 'Motore AI non configurato.')
         return { deliverables: [], conversationTitle: conv.title }
       }
 

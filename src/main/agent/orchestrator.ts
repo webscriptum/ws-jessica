@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk'
+import type Anthropic from '@anthropic-ai/sdk'
 import { dialog, app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { join } from 'path'
@@ -13,13 +13,12 @@ import { fetchUrl } from './tools/fetch-url'
 import { generateImage } from './tools/generate-image'
 import { detectSpecialty, SPECIALIST_PROMPTS } from './specialists'
 import { loadOpenAiKey } from '../storage/secure-storage'
+import { loadAppSettings } from '../storage/app-settings'
 import { updateClientField } from '../storage/clients'
-import log from 'electron-log/main'
+import { MODEL_SONNET, MODEL_OPUS } from '../llm/anthropic-provider'
+import type { LLMProvider } from '../llm/provider'
 import type { DeliverableWritten, ClientProfile } from '../../shared/types'
 
-export const MODEL_SONNET = 'claude-sonnet-5'
-const MODEL_OPUS = 'claude-opus-4-8'
-const DEFAULT_RATE_LIMIT_WAIT_MS = 60_000
 // Le immagini base64 nei tool_result vengono sostituite con un placeholder
 // una volta più vecchie di questa soglia: rispedirle a ogni turno costa
 // migliaia di token e l'analisi è ormai nel testo della conversazione.
@@ -84,6 +83,35 @@ Playbook multi-step — quando l'utente chiede un'attività "completa" o un inte
 - "Brand strategy completa" → brand-platform.pdf + tone-of-voice.md + moodboard.html + pitch-deck.pptx
 - "Piano marketing completo" → media-plan.xlsx + content-calendar.xlsx + adv-brief.pdf
 - Per ogni sequenza: avverti l'utente in anticipo quali file produrrai, poi eseguili in ordine senza interruzioni`
+
+// Variante compatta per la modalità locale: i modelli 4-14B lavorano meglio
+// con istruzioni brevi, un deliverable alla volta e senza playbook multi-step.
+// Un prompt più corto riduce anche la latenza di prefill su CPU.
+const BASE_SYSTEM_PROMPT_LOCAL = `Sei Jessica, l'assistente AI di Webscriptum — un'agenzia creativa italiana.
+
+Sei professionale, diretta e creativa. Conosci il mondo della comunicazione, del design e del marketing digitale. Supporti il team trasformando ricerche, interviste e brief in deliverable concreti.
+
+Regole operative:
+- Usa sempre l'italiano salvo richiesta diversa
+- Rispondi in modo conversazionale e professionale, come una collega senior
+- Per ricontrollare un dettaglio dai materiali originali usa read_source_file
+- Se l'utente fornisce un URL, usa fetch_url prima di fare raccomandazioni
+- Per modificare un file già prodotto: read_output_file, poi riscrivi con il tool appropriato
+
+SCELTA DEL FORMATO — scegli il formato che il destinatario usa subito:
+- mockup web, template email, moodboard, post social → write_html
+- brochure, catalogo, company profile → write_pdf
+- pitch deck, presentazione → write_presentation (.pptx)
+- documento formale, manuale, lettera → write_word (.docx)
+- media plan, calendar, budget, tabelle → write_excel (.xlsx)
+- note, brief, script, csv, json → write_deliverable
+- illustrazione AI singola → generate_image
+
+REGOLA ASSOLUTA: mai HTML dentro un PDF, mai una presentazione al posto di un documento.
+
+Per i documenti grafici usa sempre i colori e i font del cliente dal contesto ([TEMA:...] e [FONT:...]); se mancano, chiedili prima.
+
+Sei un modello locale compatto: lavora su UN deliverable alla volta, mantieni i contenuti focalizzati ed essenziali, e chiedi conferma prima di sequenze lunghe di file. Se una richiesta è ambigua, fai al massimo due domande di chiarimento.`
 
 const VOICE_CONVERSATION_SYSTEM = `
 
@@ -398,7 +426,6 @@ function buildClientProfileSection(p: ClientProfile): string {
 const PARALLEL_SAFE_TOOLS = new Set(['read_source_file', 'fetch_url'])
 
 export class Orchestrator {
-  private client: Anthropic
   private conversation: Anthropic.MessageParam[] = []
   private cancelled = false
   private systemPrompt: string
@@ -408,7 +435,8 @@ export class Orchestrator {
   private activeTools: Anthropic.Tool[] | null = null
 
   constructor(
-    private apiKey: string,
+    private provider: LLMProvider,
+    private convId: string,
     private convTitle: string,
     private sourceFiles: string[],
     contextSummary: string | null,
@@ -418,12 +446,11 @@ export class Orchestrator {
     modelMode: 'sonnet' | 'opus' = 'sonnet',
     clientProfile: ClientProfile | null = null
   ) {
-    this.client = new Anthropic({ apiKey: this.apiKey, maxRetries: 2 })
     this.outputFolder = outputFolder
     this.model = modelMode === 'opus' ? MODEL_OPUS : MODEL_SONNET
     this.clientId = clientProfile?.id ?? null
 
-    let base = BASE_SYSTEM_PROMPT
+    let base = this.provider.id === 'local' ? BASE_SYSTEM_PROMPT_LOCAL : BASE_SYSTEM_PROMPT
     if (clientProfile) {
       base = `${base}\n\n---\n\n${buildClientProfileSection(clientProfile)}`
     }
@@ -455,82 +482,10 @@ export class Orchestrator {
     return join(this.outputFolder, today)
   }
 
-  // Copia dei messaggi con breakpoint di cache sull'ultimo blocco dell'ultimo
-  // messaggio: la history è append-only, quindi ogni turno rilegge dalla cache
-  // tutto il prefisso del turno precedente. La history salvata resta pulita.
-  private messagesWithCacheBreakpoint(): Anthropic.MessageParam[] {
-    if (this.conversation.length === 0) return this.conversation
-    const messages = [...this.conversation]
-    const last = messages[messages.length - 1]
-    const blocks: Anthropic.ContentBlockParam[] =
-      typeof last.content === 'string' ? [{ type: 'text', text: last.content }] : [...last.content]
-    const tail = blocks[blocks.length - 1]
-    // cache_control non è ammesso sui blocchi thinking
-    if (tail && tail.type !== 'thinking' && tail.type !== 'redacted_thinking') {
-      blocks[blocks.length - 1] = {
-        ...tail,
-        cache_control: { type: 'ephemeral' }
-      } as Anthropic.ContentBlockParam
-    }
-    messages[messages.length - 1] = { role: last.role, content: blocks }
-    return messages
-  }
-
   private effortForTurn(voiceMode?: string): 'low' | 'medium' | 'high' {
     if (this.model === MODEL_OPUS) return 'high'
     // Sonnet 5: medium ≈ Sonnet 4.6 a effort high; low per la voce (latenza)
     return voiceMode === 'conversation' ? 'low' : 'medium'
-  }
-
-  // Streams a single turn, retrying on rate limit
-  private async streamTurn(
-    activeSystem: Anthropic.TextBlockParam[],
-    activeTools: Anthropic.Tool[],
-    voiceMode?: string
-  ): Promise<Anthropic.Message> {
-    let retryCount = 0
-    const MAX_RETRIES = 2
-
-    while (true) {
-      try {
-        const stream = this.client.messages.stream({
-          model: this.model,
-          max_tokens: 32000,
-          system: activeSystem,
-          messages: this.messagesWithCacheBreakpoint(),
-          tools: activeTools,
-          output_config: { effort: this.effortForTurn(voiceMode) }
-        })
-
-        stream.on('text', (text) => {
-          if (!this.cancelled) this.mainWindow.webContents.send('agent:token', text)
-        })
-
-        const message = await stream.finalMessage()
-        const u = message.usage
-        log.info(
-          `[agent] ${this.model} stop=${message.stop_reason} input=${u.input_tokens} cache_read=${u.cache_read_input_tokens ?? 0} cache_write=${u.cache_creation_input_tokens ?? 0} output=${u.output_tokens}`
-        )
-        return message
-      } catch (e) {
-        if (e instanceof Anthropic.RateLimitError && retryCount < MAX_RETRIES && !this.cancelled) {
-          retryCount++
-          const retryAfterSec = Number(e.headers?.get?.('retry-after'))
-          const waitMs =
-            Number.isFinite(retryAfterSec) && retryAfterSec > 0
-              ? Math.min(retryAfterSec * 1000 + 1000, 120_000)
-              : DEFAULT_RATE_LIMIT_WAIT_MS
-          const waitSec = Math.round(waitMs / 1000)
-          this.mainWindow.webContents.send(
-            'agent:token',
-            `\n\n*⏳ Limite richieste raggiunto — riprovo automaticamente tra ${waitSec} secondi (tentativo ${retryCount}/${MAX_RETRIES})…*\n\n`
-          )
-          await new Promise((r) => setTimeout(r, waitMs))
-          continue
-        }
-        throw e
-      }
-    }
   }
 
   private sanitizeConversation(): void {
@@ -553,7 +508,7 @@ export class Orchestrator {
     })
   }
 
-  private sendStatus(label: string): void {
+  private sendStatus(label: string | null): void {
     if (this.cancelled) return
     // Show as prominent status banner in UI (separate from the message stream)
     this.mainWindow.webContents.send('agent:status', label)
@@ -604,51 +559,73 @@ export class Orchestrator {
     // invaliderebbe la cache di tools+system. Una chiave OpenAI aggiunta a caldo
     // vale dalla prossima conversazione (generate_image rilegge comunque la chiave).
     if (!this.activeTools) {
-      this.activeTools = loadOpenAiKey() ? TOOLS : TOOLS.filter((t) => t.name !== 'generate_image')
+      this.activeTools = this.buildToolset()
     }
 
-    while (!this.cancelled) {
-      const message = await this.streamTurn(activeSystem, this.activeTools, voiceMode)
-      this.conversation.push({ role: 'assistant', content: message.content })
-
-      if (message.stop_reason === 'tool_use') {
-        const toolUseBlocks = message.content.filter(
-          (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
-        )
-
-        const resultsById = new Map<string, Anthropic.ToolResultBlockParam>()
-        const parallelSafe = toolUseBlocks.filter((t) => PARALLEL_SAFE_TOOLS.has(t.name))
-        const sequential = toolUseBlocks.filter((t) => !PARALLEL_SAFE_TOOLS.has(t.name))
-
-        await Promise.all(
-          parallelSafe.map(async (t) => {
-            resultsById.set(t.id, await this.executeToolUse(t, deliverables))
-          })
-        )
-        for (const t of sequential) {
-          resultsById.set(t.id, await this.executeToolUse(t, deliverables))
-        }
-
-        this.mainWindow.webContents.send('agent:status', null)
-        // Tutti i tool_result in un unico messaggio user, nell'ordine originale
-        this.conversation.push({
-          role: 'user',
-          content: toolUseBlocks.map((t) => resultsById.get(t.id)!)
-        })
-        continue
+    const result = await this.provider.runTurn({
+      system: activeSystem,
+      history: this.conversation,
+      tools: this.activeTools,
+      executeTools: (calls) => this.executeToolBatch(calls, deliverables),
+      onText: (t) => {
+        this.mainWindow.webContents.send('agent:token', t)
+      },
+      onStatus: (label) => this.sendStatus(label),
+      isCancelled: () => this.cancelled,
+      options: {
+        model: this.model,
+        effort: this.effortForTurn(voiceMode),
+        maxTokens: 32000,
+        conversationId: this.convId
       }
-
-      // Turno server ancora in corso: rispedire la conversazione per continuare
-      if (message.stop_reason === 'pause_turn') continue
-
-      break // end_turn o altro stop
-    }
+    })
+    this.conversation.push(...result.appendedMessages)
 
     return deliverables
   }
 
+  private buildToolset(): Anthropic.Tool[] {
+    let tools = loadOpenAiKey() ? TOOLS : TOOLS.filter((t) => t.name !== 'generate_image')
+    // Sul tier locale Base i formati lunghi e strutturati (PDF, PPTX) escono
+    // male da un modello 4B: il tool resta ma con un avviso nella descrizione.
+    if (this.provider.id === 'local' && loadAppSettings().localModelTier === 'base') {
+      tools = tools.map((t) =>
+        t.name === 'write_pdf' || t.name === 'write_presentation'
+          ? {
+              ...t,
+              description: `${t.description}\n\n⚠ In modalità locale Base questo formato è impegnativo: se il contenuto è lungo o complesso preferisci write_deliverable (.md) o write_excel, oppure suggerisci all'utente la modalità Cloud nelle Impostazioni.`
+            }
+          : t
+      )
+    }
+    return tools
+  }
+
+  // Esegue un batch di tool call mantenendo la parallelizzazione dei tool
+  // sicuri e l'ordine originale dei risultati. Chiamato dal provider.
+  private async executeToolBatch(
+    toolUseBlocks: Anthropic.ToolUseBlockParam[],
+    deliverables: DeliverableWritten[]
+  ): Promise<Anthropic.ToolResultBlockParam[]> {
+    const resultsById = new Map<string, Anthropic.ToolResultBlockParam>()
+    const parallelSafe = toolUseBlocks.filter((t) => PARALLEL_SAFE_TOOLS.has(t.name))
+    const sequential = toolUseBlocks.filter((t) => !PARALLEL_SAFE_TOOLS.has(t.name))
+
+    await Promise.all(
+      parallelSafe.map(async (t) => {
+        resultsById.set(t.id, await this.executeToolUse(t, deliverables))
+      })
+    )
+    for (const t of sequential) {
+      resultsById.set(t.id, await this.executeToolUse(t, deliverables))
+    }
+
+    this.mainWindow.webContents.send('agent:status', null)
+    return toolUseBlocks.map((t) => resultsById.get(t.id)!)
+  }
+
   private async executeToolUse(
-    toolUse: Anthropic.ToolUseBlock,
+    toolUse: Anthropic.ToolUseBlockParam,
     deliverables: DeliverableWritten[]
   ): Promise<Anthropic.ToolResultBlockParam> {
     if (this.cancelled) {
@@ -662,7 +639,10 @@ export class Orchestrator {
     if (toolUse.name === 'read_source_file') {
       this.sendStatus(`📖 Lettura file sorgente: ${input.filename}`)
       const fileResult = await readSourceFileResult(this.sourceFiles, input.filename)
-      if (fileResult.kind === 'image') {
+      if (fileResult.kind === 'image' && this.provider.id === 'local') {
+        // I modelli locali non hanno visione: degradazione esplicita
+        result = `L'analisi visiva delle immagini non è disponibile in modalità AI locale. "${fileResult.name}" è un'immagine: chiedi all'utente i dettagli rilevanti (colori HEX, stile, font) oppure suggerisci di passare alla modalità Cloud nelle Impostazioni per analizzarla.`
+      } else if (fileResult.kind === 'image') {
         imageContent = [
           {
             type: 'image' as const,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import type { VoiceMode, ModelMode, MascotPosition, MascotAvatarSize } from '../../../preload/index.d'
+import type { VoiceMode, ModelMode, MascotPosition, MascotAvatarSize, AiProvider, LocalModelTier } from '../../../preload/index.d'
+import LocalModelManager from './LocalModelManager'
 
 type UpdaterStatus = 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' | 'error'
 
@@ -10,6 +11,8 @@ export default function SettingsScreen(): JSX.Element {
   const [hasOpenAiKey, setHasOpenAiKey] = useState(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('off')
   const [modelMode, setModelMode] = useState<ModelMode>('sonnet')
+  const [aiProvider, setAiProvider] = useState<AiProvider>('cloud')
+  const [localModelTier, setLocalModelTier] = useState<LocalModelTier>('base')
   const [mascotMode, setMascotMode] = useState(false)
   const [mascotPosition, setMascotPosition] = useState<MascotPosition>('bottom-right')
   const [mascotAvatarSize, setMascotAvatarSize] = useState<MascotAvatarSize>('medium')
@@ -27,6 +30,8 @@ export default function SettingsScreen(): JSX.Element {
       setOpenAiKey(s.hasOpenAiKey ? '••••••••' : '')
       setVoiceMode(s.voiceMode)
       setModelMode(s.modelMode)
+      setAiProvider(s.aiProvider)
+      setLocalModelTier(s.localModelTier)
       setMascotMode(s.mascotMode)
       setMascotPosition(s.mascotPosition)
       setMascotAvatarSize(s.mascotAvatarSize)
@@ -47,6 +52,8 @@ export default function SettingsScreen(): JSX.Element {
       openAiKey: openAiKey !== '••••••••' ? openAiKey : undefined,
       voiceMode,
       modelMode,
+      aiProvider,
+      localModelTier,
       mascotMode,
       mascotPosition,
       mascotAvatarSize
@@ -84,8 +91,40 @@ export default function SettingsScreen(): JSX.Element {
 
         <h2 className="settings-page-title">Impostazioni</h2>
 
-        {/* ── API Keys ── */}
+        {/* ── Motore AI ── */}
         <div className="settings-card">
+          <div className="settings-card-title">Motore AI</div>
+          <div className="voice-seg">
+            <button
+              className={`voice-seg-btn ${aiProvider === 'cloud' ? 'active' : ''}`}
+              onClick={() => setAiProvider('cloud')}
+            >
+              <span className="voice-seg-label">☁ Cloud</span>
+              <span className="voice-seg-desc">Claude — qualità massima, richiede API key</span>
+            </button>
+            <button
+              className={`voice-seg-btn ${aiProvider === 'local' ? 'active' : ''}`}
+              onClick={() => setAiProvider('local')}
+            >
+              <span className="voice-seg-label">💻 Locale</span>
+              <span className="voice-seg-desc">Gratis e offline — gira su questo PC</span>
+            </button>
+          </div>
+
+          {aiProvider === 'local' && (
+            <LocalModelManager selectedTier={localModelTier} onSelectTier={setLocalModelTier} />
+          )}
+
+          <p className="settings-hint" style={{ marginTop: 8 }}>
+            {aiProvider === 'cloud'
+              ? 'La modalità Cloud usa la API key Anthropic qui sotto.'
+              : 'In modalità Locale chat e agente non usano API key. Le immagini (DALL·E) continuano a usare la key OpenAI, se presente.'}
+            {' '}Ricordati di premere Salva dopo il cambio.
+          </p>
+        </div>
+
+        {/* ── API Keys ── */}
+        <div className="settings-card" style={aiProvider === 'local' ? { opacity: 0.75 } : undefined}>
           <div className="settings-card-title">Chiavi API</div>
 
           <div className="settings-field">
@@ -142,7 +181,8 @@ export default function SettingsScreen(): JSX.Element {
           </div>
         </div>
 
-        {/* ── Modello AI ── */}
+        {/* ── Modello AI (solo cloud) ── */}
+        {aiProvider === 'cloud' && (
         <div className="settings-card">
           <div className="settings-card-title">Modello AI</div>
           <div className="voice-seg">
@@ -165,6 +205,7 @@ export default function SettingsScreen(): JSX.Element {
             Sonnet è consigliato per quasi tutto. Opus può aiutare su strategia complessa o testi critici.
           </p>
         </div>
+        )}
 
         {/* ── Modalità Mascotte ── */}
         <div className="settings-card">
