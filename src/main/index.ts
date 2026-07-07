@@ -36,7 +36,7 @@ function createWindow(): void {
         sandbox: false,
         additionalArguments: [
           '--jessica-mascot',
-          `--jessica-position=${settings.mascotPosition ?? 'right'}`
+          `--jessica-position=${settings.mascotPosition ?? 'bottom-right'}`
         ]
       }
     })
@@ -64,6 +64,12 @@ function createWindow(): void {
     mainWindow!.show()
   })
 
+  // Senza azzerare il riferimento, updater e handler IPC toccherebbero una
+  // finestra distrutta ("Object has been destroyed")
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
@@ -87,7 +93,8 @@ function createWindow(): void {
 type UpdaterStatus = 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' | 'error'
 
 function emitUpdaterStatus(status: UpdaterStatus, message: string, version?: string): void {
-  mainWindow?.webContents.send('updater:status', { status, message, version })
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('updater:status', { status, message, version })
 }
 
 const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
@@ -143,8 +150,9 @@ function setupAutoUpdater(): void {
   autoUpdater.on('update-downloaded', (info) => {
     emitUpdaterStatus('ready', `Versione ${info.version} pronta. Riavvia per installare.`, info.version)
     const notes = formatReleaseNotes(info.releaseNotes)
+    if (!mainWindow || mainWindow.isDestroyed()) return
     dialog
-      .showMessageBox(mainWindow!, {
+      .showMessageBox(mainWindow, {
         type: 'info',
         title: 'Aggiornamento disponibile',
         message: `WS Jessica ${info.version} è pronta.`,
@@ -204,7 +212,10 @@ app.whenReady().then(() => {
 
   // Toggle click-through in mascot mode
   ipcMain.on('window:setIgnoreMouse', (_e, ignore: boolean) => {
-    mainWindow?.setIgnoreMouseEvents(ignore, { forward: true })
+    // Il renderer mascotte lo invia a ogni mousemove: durante il relaunch per
+    // cambio modalità/posizione la finestra può essere già distrutta
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.setIgnoreMouseEvents(ignore, { forward: true })
   })
 
   const win = mainWindow!

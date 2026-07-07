@@ -454,8 +454,14 @@ export class Orchestrator {
     if (clientProfile) {
       base = `${base}\n\n---\n\n${buildClientProfileSection(clientProfile)}`
     }
-    this.systemPrompt = contextSummary
-      ? `${base}\n\n---\n\n## CONTESTO CLIENTE\n\n${contextSummary}`
+    // Nel contesto locale (8-16k token) il prompt di sistema non è comprimibile:
+    // un riassunto lungo (es. generato dal Cloud, fino a 4096 token) va tagliato
+    let summary = contextSummary
+    if (summary && this.provider.id === 'local' && summary.length > 6_000) {
+      summary = `${summary.slice(0, 6_000)}\n[…riassunto abbreviato per il modello locale]`
+    }
+    this.systemPrompt = summary
+      ? `${base}\n\n---\n\n## CONTESTO CLIENTE\n\n${summary}`
       : base
   }
 
@@ -508,10 +514,16 @@ export class Orchestrator {
     })
   }
 
+  private send(channel: string, payload: unknown): void {
+    // La finestra può venire distrutta (relaunch al cambio modalità mascotte)
+    // mentre un turno è in corso: inviare a una finestra morta crasha il main
+    if (!this.mainWindow.isDestroyed()) this.mainWindow.webContents.send(channel, payload)
+  }
+
   private sendStatus(label: string | null): void {
     if (this.cancelled) return
     // Show as prominent status banner in UI (separate from the message stream)
-    this.mainWindow.webContents.send('agent:status', label)
+    this.send('agent:status', label)
   }
 
   // Sostituisce le immagini base64 nei tool_result più vecchi con un placeholder:
@@ -568,7 +580,7 @@ export class Orchestrator {
       tools: this.activeTools,
       executeTools: (calls) => this.executeToolBatch(calls, deliverables),
       onText: (t) => {
-        this.mainWindow.webContents.send('agent:token', t)
+        this.send('agent:token', t)
       },
       onStatus: (label) => this.sendStatus(label),
       isCancelled: () => this.cancelled,
@@ -620,7 +632,7 @@ export class Orchestrator {
       resultsById.set(t.id, await this.executeToolUse(t, deliverables))
     }
 
-    this.mainWindow.webContents.send('agent:status', null)
+    this.send('agent:status', null)
     return toolUseBlocks.map((t) => resultsById.get(t.id)!)
   }
 
@@ -697,7 +709,7 @@ export class Orchestrator {
         }
         deliverables.push(written)
         result = `Deliverable salvato in: ${written.path}`
-        this.mainWindow.webContents.send('agent:deliverable', written)
+        this.send('agent:deliverable', written)
       } catch (e) {
         result = `Errore nel salvataggio: ${e instanceof Error ? e.message : String(e)}`
       }
@@ -709,7 +721,7 @@ export class Orchestrator {
           const updated = await updateClientField(this.clientId, input.field, input.value)
           if (updated) {
             result = `Profilo cliente aggiornato: ${input.field} = "${input.value}". Le informazioni sono salvate per tutte le future conversazioni con ${updated.name}.`
-            this.mainWindow.webContents.send('client:updated', this.clientId)
+            this.send('client:updated', this.clientId)
           } else {
             result = `Cliente non trovato (id: ${this.clientId}).`
           }
@@ -728,8 +740,8 @@ export class Orchestrator {
           const img = await generateImage(outputDir, input.filename, input.prompt, currentKey)
           deliverables.push({ filename: img.filename, path: img.path })
           result = `Immagine generata e salvata in: ${img.path}`
-          this.mainWindow.webContents.send('agent:deliverable', { filename: img.filename, path: img.path })
-          this.mainWindow.webContents.send('agent:image', { filename: img.filename, base64: img.base64 })
+          this.send('agent:deliverable', { filename: img.filename, path: img.path })
+          this.send('agent:image', { filename: img.filename, base64: img.base64 })
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e)
           result = `Errore generazione immagine: ${msg}. Controlla che la OpenAI key sia valida e che l'account abbia crediti disponibili.`

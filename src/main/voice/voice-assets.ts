@@ -3,7 +3,8 @@ import { join } from 'path'
 import { createWriteStream, createReadStream, existsSync, mkdirSync, statSync } from 'fs'
 import { rm, rename } from 'fs/promises'
 import { pipeline } from 'stream/promises'
-import { Readable } from 'stream'
+import { once } from 'events'
+import { createHash } from 'crypto'
 import log from 'electron-log/main'
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -17,17 +18,20 @@ const WHISPER_FILES = [
   {
     name: 'small-encoder.int8.onnx',
     url: 'https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-encoder.int8.onnx',
-    size: 112_442_483
+    size: 112_442_483,
+    sha256: '4cbe7b22fa9026b843b60a68640c747de05bafb1a11b57edc0e66c232d9f33a9'
   },
   {
     name: 'small-decoder.int8.onnx',
     url: 'https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-decoder.int8.onnx',
-    size: 262_226_114
+    size: 262_226_114,
+    sha256: 'acad50b5c782696e91b55914cc5ab4f756f1532f76e22aa6fc615f39fb69a8ee'
   },
   {
     name: 'small-tokens.txt',
     url: 'https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-tokens.txt',
-    size: 816_730
+    size: 816_730,
+    sha256: 'b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126'
   }
 ]
 
@@ -100,19 +104,72 @@ export function voiceAssetsStatus(): VoiceAssetsStatus {
   }
 }
 
+async function fileSha256(path: string): Promise<string> {
+  const hash = createHash('sha256')
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer)
+  return hash.digest('hex')
+}
+
 async function downloadFile(
   url: string,
   destPath: string,
   signal: AbortSignal,
-  onBytes: (delta: number) => void
+  onBytes: (delta: number) => void,
+  expectedSha256?: string
 ): Promise<void> {
-  const response = await fetch(url, { signal, redirect: 'follow' })
-  if (!response.ok || !response.body) throw new Error(`HTTP ${response.status} per ${url}`)
+  let received = 0
   const tmpPath = `${destPath}.download`
-  const nodeStream = Readable.fromWeb(response.body as never)
-  nodeStream.on('data', (chunk: Buffer) => onBytes(chunk.length))
-  await pipeline(nodeStream, createWriteStream(tmpPath))
-  await rename(tmpPath, destPath)
+  try {
+    const response = await fetch(url, { signal, redirect: 'follow' })
+    if (!response.ok || !response.body) throw new Error(`HTTP ${response.status} per ${url}`)
+    // NIENTE Readable.fromWeb: nel main process di Electron 31 (Node 20) perde e
+    // duplica chunk da 16KB se ci sono download concorrenti (es. voce + modello GGUF):
+    // file della dimensione giusta ma corrotti. Lettura manuale con backpressure.
+    const reader = (response.body as ReadableStream<Uint8Array>).getReader()
+    const hash = createHash('sha256')
+    const out = createWriteStream(tmpPath)
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done || !value) break
+        hash.update(value)
+        received += value.byteLength
+        onBytes(value.byteLength)
+        if (!out.write(value)) await once(out, 'drain')
+      }
+      await new Promise<void>((resolve, reject) => {
+        out.on('error', reject)
+        out.end(() => resolve())
+      })
+    } catch (e) {
+      out.destroy()
+      throw e
+    }
+    if (expectedSha256 && hash.digest('hex') !== expectedSha256) {
+      throw new Error(`checksum sha256 non valido per ${url}: download corrotto`)
+    }
+    await rename(tmpPath, destPath)
+  } catch (e) {
+    await rm(tmpPath, { force: true })
+    onBytes(-received) // il progresso torna indietro: un eventuale retry riconta da zero
+    throw e
+  }
+}
+
+async function downloadFileVerified(
+  url: string,
+  destPath: string,
+  signal: AbortSignal,
+  onBytes: (delta: number) => void,
+  expectedSha256?: string
+): Promise<void> {
+  try {
+    await downloadFile(url, destPath, signal, onBytes, expectedSha256)
+  } catch (e) {
+    if (signal.aborted) throw e
+    log.warn(`[voice] download fallito, secondo tentativo per ${url}: ${e instanceof Error ? e.message : e}`)
+    await downloadFile(url, destPath, signal, onBytes, expectedSha256)
+  }
 }
 
 export async function downloadVoiceAssets(
@@ -135,19 +192,35 @@ export async function downloadVoiceAssets(
 
     for (const file of WHISPER_FILES) {
       const dest = join(dir, file.name)
-      if (existsSync(dest) && statSync(dest).size === file.size) {
+      // Verifica anche l'hash: le build ≤0.8.0 potevano lasciare su disco file
+      // della dimensione giusta ma corrotti, che vanno riscaricati
+      if (
+        existsSync(dest) &&
+        statSync(dest).size === file.size &&
+        (await fileSha256(dest)) === file.sha256
+      ) {
         report(file.size)
         continue
       }
-      await downloadFile(file.url, dest, signal, report)
+      await downloadFileVerified(file.url, dest, signal, report, file.sha256)
     }
 
-    if (!existsSync(join(dir, PIPER_DIR))) {
+    const paths = getVoicePaths()
+    if (!existsSync(paths.piperModel) || !existsSync(paths.piperTokens) || !existsSync(paths.piperDataDir)) {
       const tarPath = join(dir, 'piper-voice.tar.bz2')
-      await downloadFile(PIPER_URL, tarPath, signal, report)
-      // Estrazione: bz2 → tar → cartella vits-piper-it_IT-paola-medium/
-      await pipeline(createReadStream(tarPath), unbzip2(), tar.x({ cwd: dir }))
-      await rm(tarPath, { force: true })
+      // Una dir parziale lasciata da un'estrazione fallita non deve mascherare il retry
+      await rm(join(dir, PIPER_DIR), { recursive: true, force: true })
+      await downloadFileVerified(PIPER_URL, tarPath, signal, report)
+      try {
+        // Estrazione: bz2 → tar → cartella vits-piper-it_IT-paola-medium/
+        // (il CRC interno di bzip2 fa da verifica di integrità del tarball)
+        await pipeline(createReadStream(tarPath), unbzip2(), tar.x({ cwd: dir }))
+      } catch (e) {
+        await rm(join(dir, PIPER_DIR), { recursive: true, force: true })
+        throw e
+      } finally {
+        await rm(tarPath, { force: true })
+      }
     }
 
     log.info('[voice] asset vocali locali scaricati')

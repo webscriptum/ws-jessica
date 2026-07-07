@@ -186,6 +186,12 @@ async function resynthesizeContext(
 }
 
 export function registerAgentIpc(win: BrowserWindow): void {
+  // Invio sicuro: la finestra può essere distrutta (relaunch per cambio
+  // modalità mascotte) mentre una risposta è ancora in corso
+  const send = (channel: string, payload: unknown): void => {
+    if (!win.isDestroyed()) win.webContents.send(channel, payload)
+  }
+
   // ── Conversations ──────────────────────────────────────────────────────────
 
   ipcMain.handle('conversations:list', async (): Promise<ConversationSummary[]> => {
@@ -457,19 +463,19 @@ export function registerAgentIpc(win: BrowserWindow): void {
     ): Promise<{ deliverables: { filename: string; path: string }[]; conversationTitle: string }> => {
       const conv = await getConversation(convId)
       if (!conv) {
-        win.webContents.send('agent:error', 'Conversazione non trovata.')
+        send('agent:error', 'Conversazione non trovata.')
         return { deliverables: [], conversationTitle: '' }
       }
 
       const ready = getProvider().isReady()
       if (!ready.ok) {
-        win.webContents.send('agent:error', ready.reason ?? 'Motore AI non configurato.')
+        send('agent:error', ready.reason ?? 'Motore AI non configurato.')
         return { deliverables: [], conversationTitle: conv.title }
       }
 
       const agent = await ensureOrchestrator(conv, win)
       if (!agent) {
-        win.webContents.send('agent:error', "Impossibile avviare l'agente.")
+        send('agent:error', "Impossibile avviare l'agente.")
         return { deliverables: [], conversationTitle: conv.title }
       }
 
@@ -500,7 +506,7 @@ export function registerAgentIpc(win: BrowserWindow): void {
           await saveConversation(savedConv)
         }
 
-        win.webContents.send('agent:done', { deliverables })
+        send('agent:done', { deliverables })
         return { deliverables, conversationTitle: savedConv?.title ?? conv.title }
       } catch (e) {
         let msg: string
@@ -509,7 +515,7 @@ export function registerAgentIpc(win: BrowserWindow): void {
         } else {
           msg = e instanceof Error ? e.message : String(e)
         }
-        win.webContents.send('agent:error', msg)
+        send('agent:error', msg)
         return { deliverables: [], conversationTitle: conv.title }
       }
     }

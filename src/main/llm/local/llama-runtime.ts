@@ -67,6 +67,12 @@ export async function ensureSession(
   }
 }
 
+// Contesto reale della sessione corrente: può essere più piccolo dello spec
+// se node-llama-cpp lo ha ridotto per mancanza di RAM/VRAM
+export function currentContextSize(): number | null {
+  return state ? state.context.contextSize : null
+}
+
 export async function disposeModel(): Promise<void> {
   if (!state) return
   const { session, context, model } = state

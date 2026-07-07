@@ -1548,11 +1548,11 @@ body.is-mascot #root {
 }
 body[data-mascot-position="bottom-right"] .mascot-avatar-wrap {
   left: auto;
-  right: 0;
+  right: 24px;
   transform: none;
 }
 body[data-mascot-position="bottom-left"] .mascot-avatar-wrap {
-  left: 0;
+  left: 24px;
   transform: none;
 }
 
@@ -1575,6 +1575,8 @@ body[data-mascot-position="bottom-left"] .mascot-avatar-wrap {
   -webkit-backdrop-filter: blur(18px);
   padding: 14px;
   min-width: 220px;
+  /* I titoli lunghi delle chat non devono allargare il balloon oltre lo schermo */
+  max-width: min(340px, calc(100vw - 48px));
   box-shadow: 0 8px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(68,184,173,0.06);
   z-index: 20;
   animation: mascot-menu-in 0.18s cubic-bezier(0.34, 1.56, 0.64, 1) both;
@@ -1596,6 +1598,33 @@ body[data-mascot-position="bottom-left"] .mascot-avatar-wrap {
   background: rgba(10, 22, 20, 0.94);
   clip-path: polygon(0 0, 100% 0, 50% 100%);
   border-top: 1px solid rgba(68, 184, 173, 0.30);
+}
+
+/* Ai bordi dello schermo il balloon non può stare centrato sull'avatar:
+   si allinea al lato dell'avatar e la coda della nuvoletta lo segue */
+body[data-mascot-position="bottom-right"] .mascot-avatar-menu {
+  left: auto;
+  right: 0;
+  transform: none;
+  animation-name: mascot-menu-in-edge;
+}
+body[data-mascot-position="bottom-left"] .mascot-avatar-menu {
+  left: 0;
+  transform: none;
+  animation-name: mascot-menu-in-edge;
+}
+@keyframes mascot-menu-in-edge {
+  from { opacity: 0; transform: translateY(10px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+body[data-mascot-position="bottom-right"] .mascot-avatar-menu-tail {
+  left: auto;
+  right: 56px;
+  transform: none;
+}
+body[data-mascot-position="bottom-left"] .mascot-avatar-menu-tail {
+  left: 56px;
+  transform: none;
 }
 
 .mascot-avatar-menu-greeting {

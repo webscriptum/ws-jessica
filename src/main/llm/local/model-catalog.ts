@@ -16,6 +16,8 @@ export interface LocalModelSpec {
 // Quantizzazione Q4_K_M per tutti: miglior compromesso qualità/RAM.
 // Qwen ha il miglior italiano tra i piccoli open; Llama 3.1 ha il function
 // calling più collaudato in node-llama-cpp (Llama3_1ChatWrapper).
+// contextSize è il massimo richiesto: node-llama-cpp lo riduce da solo se
+// RAM/VRAM non bastano. Sotto ~8k il prompt di sistema + tool satura tutto.
 export const MODEL_CATALOG: LocalModelSpec[] = [
   {
     tier: 'base',
@@ -34,7 +36,7 @@ export const MODEL_CATALOG: LocalModelSpec[] = [
     uri: 'hf:bartowski/Meta-Llama-3.1-8B-Instruct-GGUF:Q4_K_M',
     approxSizeBytes: 4.9 * 1024 ** 3,
     minRamGb: 16,
-    contextSize: 8192,
+    contextSize: 16384,
     maxTokens: 4096
   },
   {
@@ -44,7 +46,7 @@ export const MODEL_CATALOG: LocalModelSpec[] = [
     uri: 'hf:bartowski/Qwen2.5-14B-Instruct-GGUF:Q4_K_M',
     approxSizeBytes: 9.0 * 1024 ** 3,
     minRamGb: 16,
-    contextSize: 8192,
+    contextSize: 16384,
     maxTokens: 8192
   }
 ]

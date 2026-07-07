@@ -4,7 +4,7 @@ import type { LlamaChatSession } from 'node-llama-cpp'
 import { loadAppSettings } from '../storage/app-settings'
 import { getModelSpec } from './local/model-catalog'
 import { getModelPath } from './local/model-manager'
-import { ensureSession, disposeModel, loadNlc } from './local/llama-runtime'
+import { ensureSession, disposeModel, loadNlc, currentContextSize } from './local/llama-runtime'
 import { mapHistory, systemText, blocksToText } from './local/history-mapping'
 import type {
   LLMProvider,
@@ -21,6 +21,17 @@ const CANCEL_POLL_MS = 250
 
 function localToolId(): string {
   return `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+// node-llama-cpp segnala così un prompt di sistema + messaggio che non entrano
+// nella finestra di contesto: tradotto in un messaggio azionabile per l'utente
+function mapLocalContextError(e: unknown): unknown {
+  if (e instanceof Error && /context shift strategy|fits? the context size/i.test(e.message)) {
+    return new Error(
+      'Il contesto del modello locale è pieno: la conversazione o i file di contesto sono troppo lunghi. Avvia una nuova chat, riduci i file, oppure usa il motore Cloud per documenti lunghi.'
+    )
+  }
+  return e
 }
 
 function serializeToolResult(result: Anthropic.ToolResultBlockParam): string {
@@ -169,7 +180,7 @@ export class LocalLlamaProvider implements LLMProvider {
       return { appendedMessages: appended }
     } catch (e) {
       this.aligned = null
-      throw e
+      throw mapLocalContextError(e)
     } finally {
       clearInterval(cancelPoll)
       clearTimeout(timeout)
@@ -193,9 +204,18 @@ export class LocalLlamaProvider implements LLMProvider {
         .map((b) => (b.type === 'text' ? b.text : `[documento: ${b.title ?? 'PDF'}]`))
         .join('\n\n')
 
-      return session.prompt(text.slice(0, 24_000), {
-        maxTokens: Math.min(spec.maxTokens, req.maxTokens)
-      })
+      // Input + generazione devono stare nel contesto reale (che può essere
+      // più piccolo dello spec se la memoria non basta): ~3 caratteri per
+      // token in italiano, 1500 token di riserva per system e template chat
+      const ctxSize = currentContextSize() ?? spec.contextSize
+      const maxGen = Math.min(spec.maxTokens, req.maxTokens, 1024)
+      const inputChars = Math.max(4_000, (ctxSize - maxGen - 1500) * 3 - req.system.length)
+
+      try {
+        return await session.prompt(text.slice(0, inputChars), { maxTokens: maxGen })
+      } catch (e) {
+        throw mapLocalContextError(e)
+      }
     })
   }
 
