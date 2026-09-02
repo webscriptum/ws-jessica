@@ -82,6 +82,9 @@ export class LocalLlamaProvider implements LLMProvider {
     if (!modelPath) throw new Error('Modello locale non scaricato. Vai nelle Impostazioni.')
 
     const nlc = await loadNlc()
+    // Tier e URI nel log: senza, un tier che punta a un .gguf di un catalogo
+    // vecchio carica il modello sbagliato senza che nulla lo dica.
+    log.info(`[local-llm] tier=${localModelTier} uri=${spec.uri} file=${modelPath}`)
     const session = await ensureSession(modelPath, spec.contextSize, req.onStatus)
 
     const last = req.history[req.history.length - 1]

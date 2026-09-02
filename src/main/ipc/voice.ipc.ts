@@ -1,4 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron'
+import log from 'electron-log/main'
 import { loadOpenAiKey } from '../storage/secure-storage'
 import { loadAppSettings } from '../storage/app-settings'
 import {
@@ -27,12 +28,26 @@ export function registerVoiceIpc(win: BrowserWindow): void {
     'tts:speak',
     async (_e, text: string): Promise<{ ok: boolean; base64?: string; mime?: string; error?: string }> => {
       if (useLocalVoice()) {
+        const startedAt = Date.now()
         const result = await localSpeak(text.slice(0, 4096))
+        // Un TTS che fallisce era finora invisibile: l'errore tornava al
+        // renderer, finiva in una console che nessuno guarda, e in app si
+        // vedeva solo Jessica che non parlava.
+        if (result.ok) {
+          log.info(`[voice] tts locale ok: ${text.length} char in ${Date.now() - startedAt}ms`)
+        } else {
+          log.error(`[voice] tts locale FALLITO dopo ${Date.now() - startedAt}ms: ${result.error}`)
+        }
         return { ...result, mime: 'audio/wav' }
       }
 
       const openAiKey = loadOpenAiKey()
-      if (!openAiKey) return { ok: false, error: NO_VOICE_ERROR }
+      if (!openAiKey) {
+        log.warn(
+          `[voice] tts non disponibile: provider=${loadAppSettings().aiProvider}, assetVocaliPronti=${voiceAssetsReady()}, chiaveOpenAI=no`
+        )
+        return { ok: false, error: NO_VOICE_ERROR }
+      }
 
       const trimmed = text.slice(0, 4096) // OpenAI TTS max chars
       const response = await fetch('https://api.openai.com/v1/audio/speech', {
@@ -59,7 +74,17 @@ export function registerVoiceIpc(win: BrowserWindow): void {
     'stt:transcribe',
     async (_e, audioBuffer: ArrayBuffer): Promise<{ ok: boolean; text?: string; error?: string }> => {
       if (useLocalVoice()) {
-        return localTranscribe(audioBuffer)
+        const startedAt = Date.now()
+        const seconds = Math.max(0, (audioBuffer.byteLength - 44) / 2 / 16000)
+        const result = await localTranscribe(audioBuffer)
+        if (result.ok) {
+          log.info(
+            `[voice] stt locale ok: ${seconds.toFixed(1)}s di audio in ${Date.now() - startedAt}ms → ${result.text?.length ?? 0} char`
+          )
+        } else {
+          log.error(`[voice] stt locale FALLITO dopo ${Date.now() - startedAt}ms: ${result.error}`)
+        }
+        return result
       }
 
       const openAiKey = loadOpenAiKey()

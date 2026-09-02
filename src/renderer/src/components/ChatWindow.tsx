@@ -80,6 +80,7 @@ export default function ChatWindow({
   const ttsGenerationRef = useRef(0)
   const turnDoneRef = useRef(true)
   const statusAnnouncedRef = useRef(false)
+  const ttsErrorShownRef = useRef(false)
   const [micArmSignal, setMicArmSignal] = useState(0)
   const [voiceState, setVoiceState] = useState<RecordState>('idle')
   const [isSpeaking, setIsSpeaking] = useState(false)
@@ -145,6 +146,22 @@ export default function ChatWindow({
     setMicArmSignal((n) => n + 1)
   }, [voiceMode])
 
+  // Un solo avviso per conversazione: se la voce è rotta lo è per tutte le
+  // frasi, e ripeterlo a ogni frase riempirebbe la chat.
+  const reportTtsFailure = useCallback((reason: string): void => {
+    if (ttsErrorShownRef.current) return
+    ttsErrorShownRef.current = true
+    console.error('TTS error:', reason)
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: uid(),
+        role: 'assistant',
+        content: `**Non riesco a parlare.** ${reason}\n\nLa risposta resta scritta qui sopra. Dettagli tecnici nel log: \`%APPDATA%\\ws-jessica\\logs\\main.log\`.`
+      }
+    ])
+  }, [])
+
   // Tiene la sintesi della frase successiva un passo avanti alla riproduzione:
   // prima si aspettava la fine dell'audio per iniziare a sintetizzare la frase
   // dopo, e fra una frase e l'altra restava il silenzio di Piper (0,5-1,5s).
@@ -158,10 +175,10 @@ export default function ChatWindow({
     // Non rifiuta mai: una sintesi in prefetch che viene abbandonata (audio
     // interrotto) lascerebbe altrimenti una promise rifiutata non gestita.
     const synth = (t: string): Promise<Spoken> =>
-      window.electronAPI.speakText(t).catch((e): Spoken => {
-        console.error('TTS error:', e)
-        return { ok: false }
-      })
+      window.electronAPI.speakText(t).catch((e): Spoken => ({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e)
+      }))
 
     let prefetched: Promise<Spoken> | null = null
 
@@ -182,12 +199,25 @@ export default function ChatWindow({
         if (result.ok && result.base64) {
           const audio = new Audio(`data:${result.mime ?? 'audio/mpeg'};base64,${result.base64}`)
           currentAudioRef.current = audio
+          let playError: string | null = null
           await new Promise<void>((r) => {
             audio.onended = (): void => r()
-            audio.onerror = (): void => r()
-            audio.play().catch(() => r())
+            audio.onerror = (): void => {
+              playError = 'il sistema non è riuscito a riprodurre l’audio'
+              r()
+            }
+            audio.play().catch((e: unknown) => {
+              playError = e instanceof Error ? e.message : String(e)
+              r()
+            })
           })
           if (currentAudioRef.current === audio) currentAudioRef.current = null
+          if (playError) reportTtsFailure(playError)
+        } else if (!result.ok) {
+          // Prima questo ramo non esisteva: una voce che falliva lasciava
+          // l'utente a fissare Jessica muta senza un solo indizio, né a
+          // schermo né altrove.
+          reportTtsFailure(result.error ?? 'errore sconosciuto')
         }
       }
     } finally {
@@ -196,7 +226,7 @@ export default function ChatWindow({
     }
 
     maybeRearmMic()
-  }, [maybeRearmMic])
+  }, [maybeRearmMic, reportTtsFailure])
 
   const enqueueTts = useCallback((text: string): void => {
     if (voiceMode !== 'conversation') return

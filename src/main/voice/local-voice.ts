@@ -31,13 +31,36 @@ function ensureWorker(): Worker {
   return worker
 }
 
+// Tetto per ogni richiesta al worker. Senza, una chiamata che non torna mai
+// lascia la promise appesa per sempre: nel renderer la coda TTS resta marcata
+// "occupata" e la voce muore in silenzio per tutta la sessione, senza errori.
+// Valori larghi rispetto al normale (TTS ~250ms, STT ~1s, warmup ~4s a caldo):
+// qui interessa solo non restare appesi.
+const CALL_TIMEOUT_MS: Record<string, number> = { tts: 30_000, stt: 60_000, warmup: 90_000 }
+
 function call(
   req: Record<string, unknown>,
   transfer: ArrayBuffer[] = []
 ): Promise<VoiceWorkerResponse> {
   const id = nextId++
+  const type = String(req.type ?? '')
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject })
+    const timer = setTimeout(() => {
+      if (!pending.delete(id)) return
+      log.error(`[voice] richiesta '${type}' scaduta dopo ${CALL_TIMEOUT_MS[type] ?? 30_000}ms`)
+      reject(new Error(`Il motore vocale non ha risposto in tempo (${type}).`))
+    }, CALL_TIMEOUT_MS[type] ?? 30_000)
+
+    pending.set(id, {
+      resolve: (r) => {
+        clearTimeout(timer)
+        resolve(r)
+      },
+      reject: (e) => {
+        clearTimeout(timer)
+        reject(e)
+      }
+    })
     ensureWorker().postMessage({ ...req, id }, transfer)
   })
 }

@@ -1,6 +1,6 @@
 import { app } from 'electron'
-import { join } from 'path'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { join, basename } from 'path'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { rm, statfs } from 'fs/promises'
 import log from 'electron-log/main'
 import { loadNlc, disposeModel } from './llama-runtime'
@@ -25,8 +25,14 @@ export interface LocalModelStatus {
   path: string | null
 }
 
+// `uri` registra DA QUALE voce di catalogo viene il file. Senza, cambiare il
+// modello di un tier lasciava la vecchia voce a puntare al vecchio .gguf: la UI
+// dava il tier per già scaricato e il provider caricava il modello sbagliato
+// (v0.8.2: tier standard = Granite 4.2 8B nel catalogo, Llama 3.1 8B caricato
+// davvero). Le voci senza `uri` sono di prima di questo campo: obsolete per
+// definizione, visto che nessun tier ha più il modello che aveva allora.
 interface ModelState {
-  [tier: string]: { path: string; downloadedAt: string }
+  [tier: string]: { path: string; downloadedAt: string; uri?: string }
 }
 
 const activeDownloads = new Map<LocalModelTier, ModelDownloader>()
@@ -54,10 +60,45 @@ function saveState(state: ModelState): void {
   writeFileSync(statePath(), JSON.stringify(state, null, 2), 'utf-8')
 }
 
+// node-llama-cpp deriva il nome del file dall'URI: `hf:utente/repo-GGUF:QUANT`
+// diventa `hf_utente_repo.QUANT.gguf`. Serve solo per le voci salvate prima che
+// registrassimo `uri`: senza, un modello giusto già su disco verrebbe scartato
+// e l'utente si riscaricherebbe gigabyte per niente.
+function expectedFileName(uri: string): string | null {
+  const m = /^hf:([^/]+)\/(.+?)(?:-GGUF)?:(.+)$/i.exec(uri)
+  return m ? `hf_${m[1]}_${m[2]}.${m[3]}.gguf` : null
+}
+
 export function getModelPath(tier: LocalModelTier): string | null {
   const entry = loadState()[tier]
   if (!entry || !existsSync(entry.path)) return null
+
+  const spec = getModelSpec(tier)
+  if (entry.uri) {
+    // Un file scaricato per un modello che non è più quello del tier non vale
+    if (entry.uri !== spec.uri) return null
+  } else {
+    const expected = expectedFileName(spec.uri)
+    if (!expected || basename(entry.path) !== expected) return null
+  }
   return entry.path
+}
+
+// File .gguf rimasti da voci di catalogo superate: non servono più a nessun
+// tier e occupano gigabyte. Elencati per l'utente, non cancellati d'ufficio.
+export function listStaleModelFiles(): { path: string; sizeBytes: number }[] {
+  const inUse = new Set(
+    MODEL_CATALOG.map((s) => getModelPath(s.tier)).filter((p): p is string => p !== null)
+  )
+  try {
+    return readdirSync(modelsDir())
+      .filter((f) => f.endsWith('.gguf'))
+      .map((f) => join(modelsDir(), f))
+      .filter((p) => !inUse.has(p))
+      .map((p) => ({ path: p, sizeBytes: statSync(p).size }))
+  } catch {
+    return []
+  }
 }
 
 export function listModels(): LocalModelStatus[] {
@@ -120,9 +161,9 @@ export async function downloadModel(
     const path = await downloader.download()
 
     const state = loadState()
-    state[tier] = { path, downloadedAt: new Date().toISOString() }
+    state[tier] = { path, downloadedAt: new Date().toISOString(), uri: spec.uri }
     saveState(state)
-    log.info(`[local-llm] modello ${tier} scaricato: ${path}`)
+    log.info(`[local-llm] modello ${tier} scaricato: ${path} (${spec.uri})`)
     return { ok: true, path }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
