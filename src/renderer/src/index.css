@@ -1305,6 +1305,14 @@ button.asset-section-title:hover {
   flex-shrink: 0;
 }
 
+/* Il microfono si apre da solo a fine risposta: la barra deve dire a colpo
+   d'occhio quando è il turno dell'utente di parlare. */
+.conversation-mode-bar.listening {
+  background: rgba(229, 91, 91, 0.14);
+  border-top-color: rgba(229, 91, 91, 0.28);
+  color: var(--danger);
+}
+
 .conversation-mode-dot {
   width: 6px;
   height: 6px;
@@ -1312,6 +1320,10 @@ button.asset-section-title:hover {
   background: var(--accent);
   animation: pulse-rec 1.5s ease-in-out infinite;
   flex-shrink: 0;
+}
+
+.conversation-mode-bar.listening .conversation-mode-dot {
+  background: var(--danger);
 }
 
 /* ─── Input actions (voice + send) ─── */

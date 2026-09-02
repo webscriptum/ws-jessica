@@ -132,6 +132,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Voice: STT
   transcribeAudio: (audioBuffer: ArrayBuffer) => ipcRenderer.invoke('stt:transcribe', audioBuffer),
 
+  // Voice: pre-caricamento motori locali (entrando in modalità conversazione)
+  warmUpVoice: () => ipcRenderer.invoke('voice:warmup'),
+
   // Voice: asset locali (Whisper + Piper)
   getVoiceAssetsStatus: () => ipcRenderer.invoke('voiceassets:status'),
   downloadVoiceAssets: () => ipcRenderer.invoke('voiceassets:download'),

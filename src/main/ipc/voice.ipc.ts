@@ -8,7 +8,7 @@ import {
   cancelVoiceAssetsDownload,
   deleteVoiceAssets
 } from '../voice/voice-assets'
-import { localTranscribe, localSpeak } from '../voice/local-voice'
+import { localTranscribe, localSpeak, warmUpVoice } from '../voice/local-voice'
 
 const PROGRESS_THROTTLE_MS = 500
 
@@ -84,6 +84,13 @@ export function registerVoiceIpc(win: BrowserWindow): void {
       return { ok: true, text: data.text }
     }
   )
+
+  // Il renderer lo chiama entrando in modalità conversazione. Solo per la voce
+  // locale: OpenAI non ha nulla da pre-caricare.
+  ipcMain.handle('voice:warmup', async (): Promise<{ ok: boolean }> => {
+    if (useLocalVoice()) await warmUpVoice()
+    return { ok: true }
+  })
 
   // ── Asset vocali locali (Whisper + Piper) ────────────────────────────────
 

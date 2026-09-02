@@ -8,6 +8,8 @@ import { registerVoiceIpc } from './ipc/voice.ipc'
 import { registerClientsIpc } from './ipc/clients.ipc'
 import { registerLocalModelIpc } from './ipc/local-model.ipc'
 import { loadAppSettings } from './storage/app-settings'
+import { disposeModel } from './llm/local/llama-runtime'
+import { disposeVoiceWorker } from './voice/local-voice'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -232,6 +234,23 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+// Rilascio ordinato di modello locale e worker vocale prima di uscire: i loro
+// thread nativi tengono vivo il processo con i file dell'app bloccati, e
+// l'installer dell'update fallisce ("Impossibile disinstallare i vecchi
+// file": visto in 0.8.0→0.8.1 col modello caricato). Tetto di 2.5s: l'app
+// deve comunque chiudersi prima che NSIS rinunci.
+let teardownDone = false
+app.on('before-quit', (e) => {
+  if (teardownDone) return
+  teardownDone = true
+  e.preventDefault()
+  const cap = new Promise<void>((resolve) => setTimeout(resolve, 2500))
+  Promise.race([
+    Promise.allSettled([disposeModel(), disposeVoiceWorker()]).then(() => undefined),
+    cap
+  ]).finally(() => app.quit())
 })
 
 app.on('window-all-closed', () => {

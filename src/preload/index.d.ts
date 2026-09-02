@@ -3,7 +3,7 @@ export type ModelMode = 'sonnet' | 'opus'
 export type MascotPosition = 'bottom-right' | 'bottom-left'
 export type MascotAvatarSize = 'small' | 'medium' | 'large'
 export type AiProvider = 'cloud' | 'local'
-export type LocalModelTier = 'base' | 'standard' | 'pro'
+export type LocalModelTier = 'base' | 'standard'
 
 export interface LocalModelStatus {
   tier: LocalModelTier
@@ -169,6 +169,7 @@ export interface ElectronAPI {
   // Voice
   speakText: (text: string) => Promise<{ ok: boolean; base64?: string; mime?: string; error?: string }>
   transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ ok: boolean; text?: string; error?: string }>
+  warmUpVoice: () => Promise<{ ok: boolean }>
 
   // Voice: asset locali (Whisper + Piper)
   getVoiceAssetsStatus: () => Promise<{ downloaded: boolean; downloading: boolean; approxSizeBytes: number }>

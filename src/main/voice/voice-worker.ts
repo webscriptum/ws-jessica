@@ -1,6 +1,14 @@
 // Worker thread per STT/TTS locali: le chiamate sherpa-onnx sono sincrone e
 // CPU-bound, nel main process bloccherebbero IPC e finestre per secondi.
 import { parentPort } from 'worker_threads'
+import { cpus } from 'os'
+
+// Whisper è il collo di bottiglia percepito (l'utente aspetta in silenzio dopo
+// aver parlato): gli diamo più thread, lasciandone comunque per UI e LLM.
+// Piper è veloce, 2 thread bastano per stare sotto il tempo di riproduzione.
+const CPU_COUNT = Math.max(1, cpus().length)
+const STT_THREADS = Math.max(2, Math.min(4, CPU_COUNT - 2))
+const TTS_THREADS = CPU_COUNT >= 4 ? 2 : 1
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const sherpa = require('sherpa-onnx-node') as {
@@ -23,6 +31,7 @@ export interface SttRequest {
   wav: ArrayBuffer
   encoder: string
   decoder: string
+  joiner: string
   tokens: string
 }
 
@@ -34,6 +43,22 @@ export interface TtsRequest {
   tokens: string
   dataDir: string
 }
+
+// Costruisce recognizer e sintetizzatore fuori dal turno di conversazione: senza
+// questo la prima frase paga ~375MB di Whisper da caricare mentre l'utente aspetta.
+export interface WarmupRequest {
+  id: number
+  type: 'warmup'
+  encoder: string
+  decoder: string
+  joiner: string
+  sttTokens: string
+  model: string
+  tokens: string
+  dataDir: string
+}
+
+export type VoiceWorkerRequest = SttRequest | TtsRequest | WarmupRequest
 
 export interface VoiceWorkerResponse {
   id: number
@@ -95,60 +120,83 @@ function float32ToWavBase64(samples: Float32Array, sampleRate: number): string {
   return buf.toString('base64')
 }
 
+type Recognizer = InstanceType<typeof sherpa.OfflineRecognizer>
+type Tts = InstanceType<typeof sherpa.OfflineTts>
+
+// Parakeet TDT v3 è un transducer NeMo: niente campo `language`, la lingua la
+// riconosce da sé fra le 25 europee. Sostituisce Whisper small, che a parità di
+// velocità troncava la coda delle frasi e storpiava i nomi propri.
+function ensureRecognizer(
+  encoder: string,
+  decoder: string,
+  joiner: string,
+  tokens: string
+): Recognizer {
+  if (recognizer && recognizerKey === encoder) return recognizer
+  recognizer = new sherpa.OfflineRecognizer({
+    featConfig: { sampleRate: 16000, featureDim: 80 },
+    modelConfig: {
+      transducer: { encoder, decoder, joiner },
+      tokens,
+      numThreads: STT_THREADS,
+      provider: 'cpu',
+      debug: 0,
+      modelType: 'nemo_transducer'
+    },
+    decodingMethod: 'greedy_search'
+  })
+  recognizerKey = encoder
+  return recognizer
+}
+
+function ensureTts(model: string, tokens: string, dataDir: string): Tts {
+  if (tts && ttsKey === model) return tts
+  tts = new sherpa.OfflineTts({
+    model: {
+      vits: { model, tokens, dataDir },
+      numThreads: TTS_THREADS,
+      provider: 'cpu',
+      debug: 0
+    },
+    maxNumSentences: 1
+  })
+  ttsKey = model
+  return tts
+}
+
 function handleStt(req: SttRequest): VoiceWorkerResponse {
-  const key = req.encoder
-  if (!recognizer || recognizerKey !== key) {
-    recognizer = new sherpa.OfflineRecognizer({
-      featConfig: { sampleRate: 16000, featureDim: 80 },
-      modelConfig: {
-        whisper: {
-          encoder: req.encoder,
-          decoder: req.decoder,
-          language: 'it',
-          task: 'transcribe',
-          tailPaddings: -1
-        },
-        tokens: req.tokens,
-        numThreads: 2,
-        provider: 'cpu',
-        debug: 0,
-        modelType: 'whisper'
-      }
-    })
-    recognizerKey = key
-  }
+  const rec = ensureRecognizer(req.encoder, req.decoder, req.joiner, req.tokens)
 
   const { samples, sampleRate } = wavToFloat32(Buffer.from(req.wav))
-  const stream = recognizer.createStream()
+  const stream = rec.createStream()
   stream.acceptWaveform({ samples, sampleRate })
-  recognizer.decode(stream)
-  const result = recognizer.getResult(stream)
+  rec.decode(stream)
+  const result = rec.getResult(stream)
   return { id: req.id, ok: true, text: result.text }
 }
 
 function handleTts(req: TtsRequest): VoiceWorkerResponse {
-  const key = req.model
-  if (!tts || ttsKey !== key) {
-    tts = new sherpa.OfflineTts({
-      model: {
-        vits: { model: req.model, tokens: req.tokens, dataDir: req.dataDir },
-        numThreads: 1,
-        provider: 'cpu',
-        debug: 0
-      },
-      maxNumSentences: 1
-    })
-    ttsKey = key
-  }
-
-  const audio = tts.generate({ text: req.text, sid: 0, speed: 1.0 })
+  const engine = ensureTts(req.model, req.tokens, req.dataDir)
+  const audio = engine.generate({ text: req.text, sid: 0, speed: 1.0 })
   return { id: req.id, ok: true, wavBase64: float32ToWavBase64(audio.samples, audio.sampleRate) }
 }
 
-parentPort?.on('message', (msg: SttRequest | TtsRequest) => {
+// Carica entrambi i motori e fa girare una sintesi minima: la prima frase vera
+// trova tutto già caldo invece di pagare il caricamento dei modelli.
+function handleWarmup(req: WarmupRequest): VoiceWorkerResponse {
+  ensureRecognizer(req.encoder, req.decoder, req.joiner, req.sttTokens)
+  const engine = ensureTts(req.model, req.tokens, req.dataDir)
+  engine.generate({ text: 'ok', sid: 0, speed: 1.0 })
+  return { id: req.id, ok: true }
+}
+
+parentPort?.on('message', (msg: VoiceWorkerRequest) => {
   let response: VoiceWorkerResponse
   try {
-    response = msg.type === 'stt' ? handleStt(msg) : handleTts(msg)
+    response =
+      msg.type === 'stt' ? handleStt(msg)
+      : msg.type === 'tts' ? handleTts(msg)
+      : handleWarmup(msg)
   } catch (e) {
     response = { id: msg.id, ok: false, error: e instanceof Error ? e.message : String(e) }
   }

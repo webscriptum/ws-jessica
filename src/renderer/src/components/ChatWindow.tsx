@@ -3,7 +3,7 @@ import MessageBubble from './MessageBubble'
 import JessicaAvatar from './JessicaAvatar'
 import AssetPanel from './AssetPanel'
 import OnboardingFlow from './OnboardingFlow'
-import VoiceButton from './VoiceButton'
+import VoiceButton, { type RecordState } from './VoiceButton'
 import type { VoiceMode } from '../../../preload/index.d'
 
 interface Message {
@@ -26,7 +26,13 @@ interface Props {
 let msgCounter = 0
 const uid = (): string => `m-${++msgCounter}`
 
-const TTS_MAX_SENTENCES = 3
+// Rete di sicurezza contro un modello che si mette a dettare un deliverable
+// intero, non un limite sulla risposta: la brevità la chiede già il prompt di
+// sistema in modalità voce. Con il vecchio valore (3) Jessica ammutoliva a metà
+// risposta mentre il testo continuava a scorrere a schermo.
+const TTS_MAX_SENTENCES = 40
+
+const TTS_WORKING_FILLER = 'Un attimo, ci sto lavorando.'
 
 function stripMarkdownForTts(text: string): string {
   return text
@@ -69,6 +75,14 @@ export default function ChatWindow({
   const ttsQueueRef = useRef<string[]>([])
   const isTtsBusyRef = useRef(false)
   const ttsSentenceCountRef = useRef(0)
+  // Incrementato da stopTts: una coda interrotta non deve poter riprendere a
+  // parlare sopra il turno successivo.
+  const ttsGenerationRef = useRef(0)
+  const turnDoneRef = useRef(true)
+  const statusAnnouncedRef = useRef(false)
+  const [micArmSignal, setMicArmSignal] = useState(0)
+  const [voiceState, setVoiceState] = useState<RecordState>('idle')
+  const [isSpeaking, setIsSpeaking] = useState(false)
   const hadTokensRef = useRef(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -122,13 +136,49 @@ export default function ChatWindow({
     return () => clearInterval(id)
   }, [isRunning])
 
+  // Riapre il microfono da sola quando il turno è finito e Jessica ha smesso di
+  // parlare: in conversazione l'utente non deve più cliccare niente.
+  const maybeRearmMic = useCallback((): void => {
+    if (voiceMode !== 'conversation') return
+    if (!turnDoneRef.current) return
+    if (isTtsBusyRef.current || ttsQueueRef.current.length > 0) return
+    setMicArmSignal((n) => n + 1)
+  }, [voiceMode])
+
+  // Tiene la sintesi della frase successiva un passo avanti alla riproduzione:
+  // prima si aspettava la fine dell'audio per iniziare a sintetizzare la frase
+  // dopo, e fra una frase e l'altra restava il silenzio di Piper (0,5-1,5s).
   const drainTtsQueue = useCallback(async (): Promise<void> => {
     if (isTtsBusyRef.current) return
     isTtsBusyRef.current = true
-    while (ttsQueueRef.current.length > 0) {
-      const text = ttsQueueRef.current.shift()!
-      try {
-        const result = await window.electronAPI.speakText(text)
+    setIsSpeaking(true)
+    const generation = ttsGenerationRef.current
+
+    type Spoken = Awaited<ReturnType<typeof window.electronAPI.speakText>>
+    // Non rifiuta mai: una sintesi in prefetch che viene abbandonata (audio
+    // interrotto) lascerebbe altrimenti una promise rifiutata non gestita.
+    const synth = (t: string): Promise<Spoken> =>
+      window.electronAPI.speakText(t).catch((e): Spoken => {
+        console.error('TTS error:', e)
+        return { ok: false }
+      })
+
+    let prefetched: Promise<Spoken> | null = null
+
+    try {
+      while (ttsQueueRef.current.length > 0) {
+        if (generation !== ttsGenerationRef.current) return
+        const text = ttsQueueRef.current.shift()!
+        const pending = prefetched ?? synth(text)
+        prefetched = null
+
+        const result = await pending
+        if (generation !== ttsGenerationRef.current) return
+
+        // Sintetizza la prossima mentre questa suona
+        const upcoming = ttsQueueRef.current[0]
+        if (upcoming) prefetched = synth(upcoming)
+
         if (result.ok && result.base64) {
           const audio = new Audio(`data:${result.mime ?? 'audio/mpeg'};base64,${result.base64}`)
           currentAudioRef.current = audio
@@ -137,14 +187,16 @@ export default function ChatWindow({
             audio.onerror = (): void => r()
             audio.play().catch(() => r())
           })
-          currentAudioRef.current = null
+          if (currentAudioRef.current === audio) currentAudioRef.current = null
         }
-      } catch (e) {
-        console.error('TTS error:', e)
       }
+    } finally {
+      isTtsBusyRef.current = false
+      setIsSpeaking(false)
     }
-    isTtsBusyRef.current = false
-  }, [])
+
+    maybeRearmMic()
+  }, [maybeRearmMic])
 
   const enqueueTts = useCallback((text: string): void => {
     if (voiceMode !== 'conversation') return
@@ -157,6 +209,7 @@ export default function ChatWindow({
   }, [voiceMode, drainTtsQueue])
 
   const stopTts = useCallback((): void => {
+    ttsGenerationRef.current++
     currentAudioRef.current?.pause()
     currentAudioRef.current = null
     ttsQueueRef.current = []
@@ -235,22 +288,34 @@ export default function ChatWindow({
       }
       sentenceBufferRef.current = ''
       ttsSentenceCountRef.current = 0
+      turnDoneRef.current = true
+      statusAnnouncedRef.current = false
+      // Se non c'era nulla da dire il microfono si riarma qui; altrimenti ci
+      // pensa drainTtsQueue quando finisce di parlare.
+      maybeRearmMic()
     })
 
     const offStatus = window.electronAPI.onStatus((s) => {
       setAgentStatus(s)
-      if (s) {
-        setPendingResponse(false)
-        if (voiceMode === 'conversation') {
-          stopTts()
-          ttsSentenceCountRef.current = 0
-          enqueueTts('Attendi, sto lavorando...')
-        }
-      }
+      if (!s) return
+      setPendingResponse(false)
+      if (voiceMode !== 'conversation') return
+      // Un solo avviso per turno, e solo se non sta già parlando. Prima ogni
+      // tool chiamava stopTts() troncando l'audio a metà parola e bruciava uno
+      // dei tre slot di frase: con più tool si sentiva solo "attendi" ripetuto.
+      if (statusAnnouncedRef.current) return
+      if (isTtsBusyRef.current || ttsQueueRef.current.length > 0) return
+      statusAnnouncedRef.current = true
+      // Accodato a mano: il riempitivo non deve consumare il budget di frasi
+      // della risposta vera.
+      ttsQueueRef.current.push(TTS_WORKING_FILLER)
+      drainTtsQueue().catch(console.error)
     })
 
     const offError = window.electronAPI.onError((error) => {
       stopTts()
+      turnDoneRef.current = true
+      statusAnnouncedRef.current = false
       streamingTextRef.current = ''
       streamingIdRef.current = null
       setIsRunning(false)
@@ -282,11 +347,20 @@ export default function ChatWindow({
       offImage()
       offStatus()
     }
-  }, [onConversationUpdate, voiceMode, stopTts, enqueueTts, flushSentenceBuffer])
+  }, [onConversationUpdate, voiceMode, stopTts, flushSentenceBuffer, drainTtsQueue, maybeRearmMic])
+
+  // I motori vocali locali pesano ~375MB: caricarli entrando in conversazione
+  // evita che sia la prima battuta ad aspettarli.
+  useEffect(() => {
+    if (voiceMode !== 'conversation') return
+    window.electronAPI.warmUpVoice().catch(() => undefined)
+  }, [voiceMode])
 
   const sendText = useCallback((text: string): void => {
     if (!text.trim() || isRunning) return
     stopTts()
+    turnDoneRef.current = false
+    statusAnnouncedRef.current = false
     setInput('')
     setIsRunning(true)
     onRunningChange?.(true)
@@ -315,6 +389,16 @@ export default function ChatWindow({
       setInput((prev) => (prev ? `${prev} ${text}` : text))
     }
   }
+
+  const handleVoiceStateChange = useCallback(
+    (s: RecordState): void => {
+      setVoiceState(s)
+      // Aprire il microfono mentre Jessica parla la zittisce: è il modo per
+      // correggerla senza aspettare che finisca la risposta.
+      if (s === 'recording') stopTts()
+    },
+    [stopTts]
+  )
 
   const handleContextUpdated = (
     files: string[],
@@ -394,9 +478,15 @@ export default function ChatWindow({
         )}
 
         {voiceMode === 'conversation' && (
-          <div className="conversation-mode-bar">
+          <div className={`conversation-mode-bar ${voiceState === 'recording' ? 'listening' : ''}`}>
             <span className="conversation-mode-dot" />
-            Modalità conversazione attiva
+            {voiceState === 'recording'
+              ? 'Ti ascolto — mi fermo da sola quando smetti di parlare'
+              : voiceState === 'transcribing'
+                ? 'Sto capendo cosa hai detto…'
+                : isSpeaking
+                  ? 'Jessica sta parlando — premi il microfono per interromperla'
+                  : 'Modalità conversazione attiva'}
           </div>
         )}
 
@@ -421,6 +511,8 @@ export default function ChatWindow({
               <VoiceButton
                 onTranscript={handleTranscript}
                 disabled={isRunning}
+                armSignal={micArmSignal}
+                onStateChange={handleVoiceStateChange}
               />
             )}
             {isRunning ? (

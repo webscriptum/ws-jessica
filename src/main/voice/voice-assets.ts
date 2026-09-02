@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { join } from 'path'
-import { createWriteStream, createReadStream, existsSync, mkdirSync, statSync } from 'fs'
+import { createWriteStream, createReadStream, existsSync, mkdirSync } from 'fs'
 import { rm, rename } from 'fs/promises'
 import { pipeline } from 'stream/promises'
 import { once } from 'events'
@@ -12,27 +12,23 @@ const unbzip2 = require('unbzip2-stream') as () => NodeJS.ReadWriteStream
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const tar = require('tar') as { x: (opts: { cwd: string }) => NodeJS.WritableStream }
 
-// STT: Whisper small int8 (multilingua, buon italiano) — singoli file da HF,
-// così si evita il tarball GitHub da 640MB che include anche i pesi fp32.
-const WHISPER_FILES = [
-  {
-    name: 'small-encoder.int8.onnx',
-    url: 'https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-encoder.int8.onnx',
-    size: 112_442_483,
-    sha256: '4cbe7b22fa9026b843b60a68640c747de05bafb1a11b57edc0e66c232d9f33a9'
-  },
-  {
-    name: 'small-decoder.int8.onnx',
-    url: 'https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-decoder.int8.onnx',
-    size: 262_226_114,
-    sha256: 'acad50b5c782696e91b55914cc5ab4f756f1532f76e22aa6fc615f39fb69a8ee'
-  },
-  {
-    name: 'small-tokens.txt',
-    url: 'https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main/small-tokens.txt',
-    size: 816_730,
-    sha256: 'b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126'
-  }
+// STT: NeMo Parakeet TDT 0.6b v3 int8 (25 lingue europee, italiano incluso).
+// Sostituisce Whisper small, misurato in spike il 2026-09-01 sullo stesso audio
+// italiano: STESSA velocità (RTF 0.758 contro 0.772 su 8 core / 4 thread — il
+// "26x realtime" pubblicizzato vale su GPU, non qui) ma accuratezza molto
+// superiore. Whisper troncava la coda di ogni frase e storpiava i nomi propri
+// ("Ciao Jessica" → "George Essica"), consegnando all'LLM comandi mutilati.
+const PARAKEET_URL =
+  'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2'
+const PARAKEET_DIR = 'sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8'
+const PARAKEET_DOWNLOAD_SIZE = 465 * 1024 ** 2
+
+// File Whisper delle versioni ≤0.8.x: vanno rimossi per non lasciare 375MB
+// morti nella cartella voce dopo l'aggiornamento.
+const LEGACY_WHISPER_FILES = [
+  'small-encoder.int8.onnx',
+  'small-decoder.int8.onnx',
+  'small-tokens.txt'
 ]
 
 // TTS: voce italiana Piper "paola" (femminile). Il tar.bz2 include il modello
@@ -42,7 +38,7 @@ const PIPER_URL =
 const PIPER_DIR = 'vits-piper-it_IT-paola-medium'
 const PIPER_APPROX_SIZE = 66 * 1024 ** 2
 
-export const VOICE_ASSETS_TOTAL_BYTES = WHISPER_FILES.reduce((s, f) => s + f.size, 0) + PIPER_APPROX_SIZE
+export const VOICE_ASSETS_TOTAL_BYTES = PARAKEET_DOWNLOAD_SIZE + PIPER_APPROX_SIZE
 
 export interface VoiceAssetsStatus {
   downloaded: boolean
@@ -65,19 +61,22 @@ function voiceDir(): string {
 }
 
 export function getVoicePaths(): {
-  whisperEncoder: string
-  whisperDecoder: string
-  whisperTokens: string
+  sttEncoder: string
+  sttDecoder: string
+  sttJoiner: string
+  sttTokens: string
   piperModel: string
   piperTokens: string
   piperDataDir: string
 } {
   const dir = voiceDir()
+  const stt = join(dir, PARAKEET_DIR)
   const piper = join(dir, PIPER_DIR)
   return {
-    whisperEncoder: join(dir, 'small-encoder.int8.onnx'),
-    whisperDecoder: join(dir, 'small-decoder.int8.onnx'),
-    whisperTokens: join(dir, 'small-tokens.txt'),
+    sttEncoder: join(stt, 'encoder.int8.onnx'),
+    sttDecoder: join(stt, 'decoder.int8.onnx'),
+    sttJoiner: join(stt, 'joiner.int8.onnx'),
+    sttTokens: join(stt, 'tokens.txt'),
     piperModel: join(piper, 'it_IT-paola-medium.onnx'),
     piperTokens: join(piper, 'tokens.txt'),
     piperDataDir: join(piper, 'espeak-ng-data')
@@ -87,9 +86,10 @@ export function getVoicePaths(): {
 export function voiceAssetsReady(): boolean {
   const p = getVoicePaths()
   return (
-    existsSync(p.whisperEncoder) &&
-    existsSync(p.whisperDecoder) &&
-    existsSync(p.whisperTokens) &&
+    existsSync(p.sttEncoder) &&
+    existsSync(p.sttDecoder) &&
+    existsSync(p.sttJoiner) &&
+    existsSync(p.sttTokens) &&
     existsSync(p.piperModel) &&
     existsSync(p.piperTokens) &&
     existsSync(p.piperDataDir)
@@ -102,12 +102,6 @@ export function voiceAssetsStatus(): VoiceAssetsStatus {
     downloading,
     approxSizeBytes: VOICE_ASSETS_TOTAL_BYTES
   }
-}
-
-async function fileSha256(path: string): Promise<string> {
-  const hash = createHash('sha256')
-  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer)
-  return hash.digest('hex')
 }
 
 async function downloadFile(
@@ -172,6 +166,31 @@ async function downloadFileVerified(
   }
 }
 
+// Scarica un tar.bz2 e lo estrae nella cartella voce. Il CRC interno di bzip2
+// fa da verifica di integrità: se il download è corrotto l'estrazione fallisce
+// invece di lasciare a disco un modello silenziosamente rotto.
+async function downloadAndExtract(
+  url: string,
+  tarName: string,
+  extractedDir: string,
+  dir: string,
+  signal: AbortSignal,
+  report: (delta: number) => void
+): Promise<void> {
+  const tarPath = join(dir, tarName)
+  // Una dir parziale lasciata da un'estrazione fallita non deve mascherare il retry
+  await rm(join(dir, extractedDir), { recursive: true, force: true })
+  await downloadFileVerified(url, tarPath, signal, report)
+  try {
+    await pipeline(createReadStream(tarPath), unbzip2(), tar.x({ cwd: dir }))
+  } catch (e) {
+    await rm(join(dir, extractedDir), { recursive: true, force: true })
+    throw e
+  } finally {
+    await rm(tarPath, { force: true })
+  }
+}
+
 export async function downloadVoiceAssets(
   onProgress: (p: VoiceAssetsProgress) => void
 ): Promise<{ ok: boolean; error?: string }> {
@@ -189,38 +208,19 @@ export async function downloadVoiceAssets(
 
   try {
     const dir = voiceDir()
+    const paths = getVoicePaths()
 
-    for (const file of WHISPER_FILES) {
-      const dest = join(dir, file.name)
-      // Verifica anche l'hash: le build ≤0.8.0 potevano lasciare su disco file
-      // della dimensione giusta ma corrotti, che vanno riscaricati
-      if (
-        existsSync(dest) &&
-        statSync(dest).size === file.size &&
-        (await fileSha256(dest)) === file.sha256
-      ) {
-        report(file.size)
-        continue
-      }
-      await downloadFileVerified(file.url, dest, signal, report, file.sha256)
+    if (!existsSync(paths.sttEncoder) || !existsSync(paths.sttJoiner) || !existsSync(paths.sttTokens)) {
+      await downloadAndExtract(PARAKEET_URL, 'parakeet-stt.tar.bz2', PARAKEET_DIR, dir, signal, report)
     }
 
-    const paths = getVoicePaths()
     if (!existsSync(paths.piperModel) || !existsSync(paths.piperTokens) || !existsSync(paths.piperDataDir)) {
-      const tarPath = join(dir, 'piper-voice.tar.bz2')
-      // Una dir parziale lasciata da un'estrazione fallita non deve mascherare il retry
-      await rm(join(dir, PIPER_DIR), { recursive: true, force: true })
-      await downloadFileVerified(PIPER_URL, tarPath, signal, report)
-      try {
-        // Estrazione: bz2 → tar → cartella vits-piper-it_IT-paola-medium/
-        // (il CRC interno di bzip2 fa da verifica di integrità del tarball)
-        await pipeline(createReadStream(tarPath), unbzip2(), tar.x({ cwd: dir }))
-      } catch (e) {
-        await rm(join(dir, PIPER_DIR), { recursive: true, force: true })
-        throw e
-      } finally {
-        await rm(tarPath, { force: true })
-      }
+      await downloadAndExtract(PIPER_URL, 'piper-voice.tar.bz2', PIPER_DIR, dir, signal, report)
+    }
+
+    // I file Whisper delle vecchie versioni non servono più: 375MB da liberare
+    for (const name of LEGACY_WHISPER_FILES) {
+      await rm(join(dir, name), { force: true })
     }
 
     log.info('[voice] asset vocali locali scaricati')
@@ -248,9 +248,10 @@ export async function deleteVoiceAssets(): Promise<{ ok: boolean; error?: string
   try {
     if (abortController) abortController.abort()
     const dir = voiceDir()
-    for (const file of WHISPER_FILES) {
-      await rm(join(dir, file.name), { force: true })
+    for (const name of LEGACY_WHISPER_FILES) {
+      await rm(join(dir, name), { force: true })
     }
+    await rm(join(dir, PARAKEET_DIR), { recursive: true, force: true })
     await rm(join(dir, PIPER_DIR), { recursive: true, force: true })
     return { ok: true }
   } catch (e) {

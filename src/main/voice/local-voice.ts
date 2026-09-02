@@ -1,7 +1,7 @@
 import { Worker } from 'worker_threads'
 import { join } from 'path'
 import log from 'electron-log/main'
-import { getVoicePaths } from './voice-assets'
+import { getVoicePaths, voiceAssetsReady } from './voice-assets'
 import type { VoiceWorkerResponse } from './voice-worker'
 
 let worker: Worker | null = null
@@ -22,9 +22,11 @@ function ensureWorker(): Worker {
     for (const p of pending.values()) p.reject(error)
     pending.clear()
     worker = null
+    warmedUp = false
   })
   worker.on('exit', () => {
     worker = null
+    warmedUp = false
   })
   return worker
 }
@@ -44,12 +46,60 @@ export async function localTranscribe(wav: ArrayBuffer): Promise<{ ok: boolean; 
   const p = getVoicePaths()
   try {
     const res = await call(
-      { type: 'stt', wav, encoder: p.whisperEncoder, decoder: p.whisperDecoder, tokens: p.whisperTokens },
+      {
+        type: 'stt',
+        wav,
+        encoder: p.sttEncoder,
+        decoder: p.sttDecoder,
+        joiner: p.sttJoiner,
+        tokens: p.sttTokens
+      },
       [wav]
     )
     return { ok: res.ok, text: res.text, error: res.error }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+// Chiamata quando l'utente entra in modalità conversazione: carica Whisper e
+// Piper in anticipo, così la prima battuta non aspetta ~375MB di modelli.
+// Idempotente e non bloccante — se fallisce, la prima richiesta ricaricherà.
+let warmedUp = false
+export async function warmUpVoice(): Promise<void> {
+  if (warmedUp || !voiceAssetsReady()) return
+  warmedUp = true
+  const p = getVoicePaths()
+  try {
+    await call({
+      type: 'warmup',
+      encoder: p.sttEncoder,
+      decoder: p.sttDecoder,
+      joiner: p.sttJoiner,
+      sttTokens: p.sttTokens,
+      model: p.piperModel,
+      tokens: p.piperTokens,
+      dataDir: p.piperDataDir
+    })
+    log.info('[voice] motori vocali pre-caricati')
+  } catch (e) {
+    warmedUp = false
+    log.warn(`[voice] pre-caricamento fallito: ${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+// Da chiamare all'uscita: un worker vivo (con sherpa-onnx caricato) tiene in
+// vita il processo e i suoi file bloccati mentre l'installer dell'update
+// prova a sostituirli
+export async function disposeVoiceWorker(): Promise<void> {
+  warmedUp = false
+  if (!worker) return
+  const w = worker
+  worker = null
+  try {
+    await w.terminate()
+  } catch {
+    // worker già uscito
   }
 }
 

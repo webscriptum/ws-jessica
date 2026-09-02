@@ -7,7 +7,10 @@ export type ModelMode = 'sonnet' | 'opus'
 export type MascotPosition = 'bottom-right' | 'bottom-left'
 export type MascotAvatarSize = 'small' | 'medium' | 'large'
 export type AiProvider = 'cloud' | 'local'
-export type LocalModelTier = 'base' | 'standard' | 'pro'
+// Il tier 'pro' (Qwen2.5 14B, 9GB) è stato rimosso: non girava su nessuno dei
+// PC dell'ufficio. Le installazioni che lo avevano salvato ripiegano su
+// 'standard' al caricamento delle impostazioni.
+export type LocalModelTier = 'base' | 'standard'
 
 export interface AppSettings {
   voiceMode: VoiceMode
@@ -36,7 +39,10 @@ function settingsPath(): string {
 export function loadAppSettings(): AppSettings {
   if (!existsSync(settingsPath())) return { ...DEFAULTS }
   try {
-    return { ...DEFAULTS, ...JSON.parse(readFileSync(settingsPath(), 'utf-8')) }
+    const stored = { ...DEFAULTS, ...JSON.parse(readFileSync(settingsPath(), 'utf-8')) } as AppSettings
+    // Migrazione dal tier 'pro' rimosso in v0.9.0
+    if ((stored.localModelTier as string) === 'pro') stored.localModelTier = 'standard'
+    return stored
   } catch {
     return { ...DEFAULTS }
   }

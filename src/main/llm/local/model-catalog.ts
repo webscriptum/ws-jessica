@@ -14,37 +14,34 @@ export interface LocalModelSpec {
 }
 
 // Quantizzazione Q4_K_M per tutti: miglior compromesso qualità/RAM.
-// Qwen ha il miglior italiano tra i piccoli open; Llama 3.1 ha il function
-// calling più collaudato in node-llama-cpp (Llama3_1ChatWrapper).
+//
+// Granite 4.2 (IBM, agosto 2026, Apache 2.0) sostituisce Qwen3 4B / Llama 3.1 8B
+// / Qwen2.5 14B. Il criterio non è la cultura generale ma il **tool calling**:
+// Jessica è un agente con dieci tool dagli schema grossi, e i modelli precedenti
+// sbagliavano le chiamate. Granite è addestrata esplicitamente per uso agentico,
+// supporta l'italiano ed espone 131K di contesto nativo — che è anche il motivo
+// per cui qui il contextSize può salire senza i tamponi che servivano prima.
+//
+// Il tier 'pro' è stato eliminato: 9GB non giravano su nessun PC dell'ufficio.
 // contextSize è il massimo richiesto: node-llama-cpp lo riduce da solo se
-// RAM/VRAM non bastano. Sotto ~8k il prompt di sistema + tool satura tutto.
+// RAM/VRAM non bastano.
 export const MODEL_CATALOG: LocalModelSpec[] = [
   {
     tier: 'base',
-    label: 'Base — Qwen3 4B',
-    description: 'Leggero e veloce, per PC portatili senza GPU (Surface). Testi, bozze e fogli semplici.',
-    uri: 'hf:unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M',
-    approxSizeBytes: 2.6 * 1024 ** 3,
+    label: 'Base — Granite 4.2 3B',
+    description: 'Leggero e reattivo, per portatili senza GPU. Testi, bozze e fogli semplici.',
+    uri: 'hf:ibm-granite/granite-4.2-3b-GGUF:Q4_K_M',
+    approxSizeBytes: 2.09 * 1024 ** 3,
     minRamGb: 8,
-    contextSize: 8192,
-    maxTokens: 4096
-  },
-  {
-    tier: 'standard',
-    label: 'Standard — Llama 3.1 8B',
-    description: 'Più capace, richiede 16GB di RAM. Buon equilibrio qualità/velocità su PC recenti.',
-    uri: 'hf:bartowski/Meta-Llama-3.1-8B-Instruct-GGUF:Q4_K_M',
-    approxSizeBytes: 4.9 * 1024 ** 3,
-    minRamGb: 16,
     contextSize: 16384,
     maxTokens: 4096
   },
   {
-    tier: 'pro',
-    label: 'Pro — Qwen2.5 14B',
-    description: 'Il più capace. Consigliato su MacBook Apple Silicon (Metal) o PC con 32GB di RAM.',
-    uri: 'hf:bartowski/Qwen2.5-14B-Instruct-GGUF:Q4_K_M',
-    approxSizeBytes: 9.0 * 1024 ** 3,
+    tier: 'standard',
+    label: 'Standard — Granite 4.2 8B',
+    description: 'Più capace nelle operazioni complesse. Consigliato dai 16GB di RAM in su.',
+    uri: 'hf:ibm-granite/granite-4.2-8b-GGUF:Q4_K_M',
+    approxSizeBytes: 4.98 * 1024 ** 3,
     minRamGb: 16,
     contextSize: 16384,
     maxTokens: 8192

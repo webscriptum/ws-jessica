@@ -16,13 +16,12 @@ export function detectHardware(): HardwareInfo {
   const totalRamGb = Math.round(totalmem() / 1024 ** 3)
   const appleSilicon = platform === 'darwin' && arch === 'arm64'
 
-  let recommendedTier: LocalModelTier = 'base'
-  if (appleSilicon && totalRamGb >= 16) {
-    // Apple Silicon: memoria unificata + Metal reggono bene il 14B
-    recommendedTier = 'pro'
-  } else if (totalRamGb >= 32) {
-    recommendedTier = 'standard'
-  }
+  // La vecchia logica era incoerente (consigliava il tier più pesante solo su
+  // Apple Silicon, e su Windows chiedeva 32GB per il tier intermedio da 4.9GB).
+  // Il criterio ora è uno solo: il modello più il suo contesto devono stare in
+  // memoria lasciando lavorare il resto del PC. Granite 4.2 8B occupa ~5GB di
+  // pesi più ~1.5GB di contesto: sotto i 16GB totali si sta troppo stretti.
+  const recommendedTier: LocalModelTier = totalRamGb >= 16 ? 'standard' : 'base'
 
   const osLabel =
     platform === 'darwin' ? (appleSilicon ? 'Mac Apple Silicon' : 'Mac Intel')
