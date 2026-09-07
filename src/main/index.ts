@@ -192,7 +192,7 @@ function setupAutoUpdater(): void {
         defaultId: 0
       })
       .then(({ response }) => {
-        if (response === 0) autoUpdater.quitAndInstall(true, true)
+        if (response === 0) void teardownThenInstall()
       })
   })
 
@@ -228,9 +228,7 @@ function registerUpdaterIpc(): void {
     }
   })
 
-  ipcMain.handle('updater:install', () => {
-    autoUpdater.quitAndInstall(true, true)
-  })
+  ipcMain.handle('updater:install', () => teardownThenInstall())
 }
 
 app.whenReady().then(() => {
@@ -272,12 +270,31 @@ app.whenReady().then(() => {
 // l'installer dell'update fallisce ("Impossibile disinstallare i vecchi
 // file": visto in 0.8.0→0.8.1 col modello caricato). Tetto di 2.5s: l'app
 // deve comunque chiudersi prima che NSIS rinunci.
+// Liberare un modello da 5GB su Vulkan può richiedere parecchi secondi: con
+// 2,5s il tetto scattava sempre e i file restavano bloccati.
+const TEARDOWN_CAP_MS = 10_000
 let teardownDone = false
+
+// L'installer NSIS parte e trova i file dell'app ancora bloccati se il
+// teardown avviene "durante" la chiusura: da qui l'errore "Impossibile
+// disinstallare i vecchi file: 2". Il modello locale, che dalla 0.8.5 è
+// sempre residente perché pre-caricato all'avvio, può occupare 5GB su Vulkan
+// e impiegare più dei 2,5s che il tetto concedeva. Quindi si smonta tutto
+// PRIMA di chiamare quitAndInstall, non in parallelo alla chiusura.
+async function teardownThenInstall(): Promise<void> {
+  teardownDone = true
+  await Promise.race([
+    Promise.allSettled([disposeModel(), disposeVoiceWorker()]),
+    new Promise((resolve) => setTimeout(resolve, TEARDOWN_CAP_MS))
+  ])
+  autoUpdater.quitAndInstall(true, true)
+}
+
 app.on('before-quit', (e) => {
   if (teardownDone) return
   teardownDone = true
   e.preventDefault()
-  const cap = new Promise<void>((resolve) => setTimeout(resolve, 2500))
+  const cap = new Promise<void>((resolve) => setTimeout(resolve, TEARDOWN_CAP_MS))
   Promise.race([
     Promise.allSettled([disposeModel(), disposeVoiceWorker()]).then(() => undefined),
     cap
