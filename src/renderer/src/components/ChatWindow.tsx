@@ -74,10 +74,8 @@ export default function ChatWindow({
   const streamingIdRef = useRef<string | null>(null)
   const streamingTextRef = useRef<string>('')
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
-  const sentenceBufferRef = useRef<string>('')
   const ttsQueueRef = useRef<string[]>([])
   const isTtsBusyRef = useRef(false)
-  const ttsSentenceCountRef = useRef(0)
   // Incrementato da stopTts: una coda interrotta non deve poter riprendere a
   // parlare sopra il turno successivo.
   const ttsGenerationRef = useRef(0)
@@ -126,8 +124,6 @@ export default function ChatWindow({
       currentAudioRef.current = null
       ttsQueueRef.current = []
       isTtsBusyRef.current = false
-      sentenceBufferRef.current = ''
-      ttsSentenceCountRef.current = 0
     }
   }, [conversationId])
 
@@ -181,13 +177,23 @@ export default function ChatWindow({
       // Piper neurale in WASM se il modello c'è; la voce di sistema (Elsa) resta
       // come ripiego, perché è robotica ma non richiede nulla.
       const piperPronto = await ensurePiperReady()
+      // Sintesi anticipata: mentre una frase suona, la successiva si sta già
+      // preparando. Senza, fra una frase e l'altra restava il tempo di sintesi
+      // (RTF ~0,32, quindi quasi un secondo su una frase di tre).
+      let prefetch: Promise<Awaited<ReturnType<typeof synthesizeWithPiper>>> | null = null
       try {
         while (ttsQueueRef.current.length > 0) {
           if (generation !== ttsGenerationRef.current) return
           const text = ttsQueueRef.current.shift()!
 
           if (piperPronto) {
-            const sintesi = await synthesizeWithPiper(text)
+            const corrente = prefetch ?? synthesizeWithPiper(text)
+            prefetch = null
+            const sintesi = await corrente
+            const prossima = ttsQueueRef.current[0]
+            if (prossima && generation === ttsGenerationRef.current) {
+              prefetch = synthesizeWithPiper(prossima)
+            }
             if (generation !== ttsGenerationRef.current) {
               if (sintesi.url) URL.revokeObjectURL(sintesi.url)
               return
@@ -213,6 +219,11 @@ export default function ChatWindow({
           if (!result.ok) reportTtsFailure(result.error ?? 'errore sconosciuto')
         }
       } finally {
+        // Una sintesi anticipata che nessuno riprodurrà va comunque liberata
+        if (prefetch) {
+          void prefetch.then((r) => r.url && URL.revokeObjectURL(r.url)).catch(() => undefined)
+          prefetch = null
+        }
         isTtsBusyRef.current = false
         setIsSpeaking(false)
       }
@@ -277,15 +288,24 @@ export default function ChatWindow({
     maybeRearmMic()
   }, [aiProvider, maybeRearmMic, reportTtsFailure])
 
-  const enqueueTts = useCallback((text: string): void => {
-    if (voiceMode !== 'conversation') return
-    const clean = stripMarkdownForTts(text)
-    if (!clean) return
-    if (ttsSentenceCountRef.current >= TTS_MAX_SENTENCES) return
-    ttsSentenceCountRef.current++
-    ttsQueueRef.current.push(clean)
-    drainTtsQueue().catch(console.error)
-  }, [voiceMode, drainTtsQueue])
+  // Spezza la risposta completa in frasi e le accoda tutte in una volta: la
+  // coda non può più svuotarsi a metà, quindi non ci sono pause innaturali.
+  const speakFullResponse = useCallback(
+    (text: string): void => {
+      if (voiceMode !== 'conversation') return
+      const clean = stripMarkdownForTts(text)
+      if (!clean) return
+      const frasi = clean
+        .split(/(?<=[.!?…])\s+/)
+        .map((f) => f.trim())
+        .filter(Boolean)
+        .slice(0, TTS_MAX_SENTENCES)
+      if (frasi.length === 0) return
+      ttsQueueRef.current.push(...frasi)
+      drainTtsQueue().catch(console.error)
+    },
+    [voiceMode, drainTtsQueue]
+  )
 
   const stopTts = useCallback((): void => {
     ttsGenerationRef.current++
@@ -294,32 +314,11 @@ export default function ChatWindow({
     currentAudioRef.current = null
     ttsQueueRef.current = []
     isTtsBusyRef.current = false
-    sentenceBufferRef.current = ''
-    ttsSentenceCountRef.current = 0
   }, [])
-
-  const flushSentenceBuffer = useCallback((force = false): void => {
-    if (voiceMode !== 'conversation') return
-    const buf = sentenceBufferRef.current
-    const parts = buf.split(/(?<=[.!?…])\s+/)
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (parts[i].trim()) enqueueTts(parts[i])
-    }
-    sentenceBufferRef.current = parts[parts.length - 1]
-    if (force && sentenceBufferRef.current.trim()) {
-      enqueueTts(sentenceBufferRef.current)
-      sentenceBufferRef.current = ''
-    }
-  }, [voiceMode, enqueueTts])
 
   useEffect(() => {
     const offToken = window.electronAPI.onToken((token) => {
       streamingTextRef.current += token
-
-      if (voiceMode === 'conversation') {
-        sentenceBufferRef.current += token
-        flushSentenceBuffer()
-      }
 
       if (!streamingIdRef.current) {
         // Set ref BEFORE setMessages to avoid race with onDone in same microtask
@@ -342,6 +341,7 @@ export default function ChatWindow({
 
     const offDone = window.electronAPI.onDone(() => {
       const hadTokens = hadTokensRef.current
+      const fullText = streamingTextRef.current
       setMessages((prev) => {
         // Clear ALL streaming cursors (safety net for any edge-case race)
         const cleared = prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
@@ -363,11 +363,13 @@ export default function ChatWindow({
       setAgentStatus(null)
       onConversationUpdate()
 
-      if (voiceMode === 'conversation') {
-        flushSentenceBuffer(true)
+      // Si parla SOLO ora che la risposta è completa. Prima si sintetizzava
+      // frase per frase durante lo streaming, ma un LLM locale a ~20 token/s
+      // produce le frasi più lentamente di quanto il parlato le consumi: la
+      // coda si svuotava e la voce si fermava a metà discorso.
+      if (voiceMode === 'conversation' && fullText.trim()) {
+        speakFullResponse(fullText)
       }
-      sentenceBufferRef.current = ''
-      ttsSentenceCountRef.current = 0
       turnDoneRef.current = true
       statusAnnouncedRef.current = false
       // Se non c'era nulla da dire il microfono si riarma qui; altrimenti ci
@@ -427,7 +429,7 @@ export default function ChatWindow({
       offImage()
       offStatus()
     }
-  }, [onConversationUpdate, voiceMode, stopTts, flushSentenceBuffer, drainTtsQueue, maybeRearmMic])
+  }, [onConversationUpdate, voiceMode, stopTts, drainTtsQueue, maybeRearmMic, speakFullResponse])
 
   // I motori vocali locali pesano ~375MB: caricarli entrando in conversazione
   // evita che sia la prima battuta ad aspettarli.
