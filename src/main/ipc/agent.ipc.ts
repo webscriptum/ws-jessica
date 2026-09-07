@@ -1,4 +1,5 @@
 import { ipcMain, dialog, shell, app, BrowserWindow } from 'electron'
+import log from 'electron-log/main'
 import { readFile, readdir, stat } from 'fs/promises'
 import { basename, extname, join } from 'path'
 import { RateLimitError } from '@anthropic-ai/sdk'
@@ -515,6 +516,10 @@ export function registerAgentIpc(win: BrowserWindow): void {
         } else {
           msg = e instanceof Error ? e.message : String(e)
         }
+        log.error(
+          `[agent] turno fallito: ${msg}
+${e instanceof Error && e.stack ? e.stack : '(nessuno stack)'}`
+        )
         send('agent:error', msg)
         return { deliverables: [], conversationTitle: conv.title }
       }

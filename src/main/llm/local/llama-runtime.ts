@@ -25,14 +25,27 @@ interface RuntimeState {
 
 let state: RuntimeState | null = null
 let llamaInstance: Llama | null = null
+// Promise in volo: due chiamate concorrenti devono aspettare LA STESSA
+// inizializzazione, non avviarne una seconda.
+let llamaInit: Promise<Llama> | null = null
+// Caricamento modello in volo, per accodare i chiamanti concorrenti
+let sessionLoad: { modelPath: string; promise: Promise<LlamaChatSession> } | null = null
 
 async function getLlamaInstance(): Promise<Llama> {
-  if (!llamaInstance) {
-    const nlc = await loadNlc()
-    llamaInstance = await nlc.getLlama()
-    log.info(`[local-llm] llama.cpp inizializzato — gpu=${String(llamaInstance.gpu)}`)
+  if (llamaInstance) return llamaInstance
+  if (!llamaInit) {
+    llamaInit = (async () => {
+      const nlc = await loadNlc()
+      const instance = await nlc.getLlama()
+      llamaInstance = instance
+      log.info(`[local-llm] llama.cpp inizializzato — gpu=${String(instance.gpu)}`)
+      return instance
+    })().catch((e) => {
+      llamaInit = null
+      throw e
+    })
   }
-  return llamaInstance
+  return llamaInit
 }
 
 export function getGpuType(): string | false | null {
@@ -50,10 +63,23 @@ export async function ensureSession(
 ): Promise<LlamaChatSession> {
   if (state && state.modelPath === modelPath) return state.session
 
+  // Un caricamento dello stesso modello è già in volo: ci si accoda invece di
+  // avviarne un secondo. Senza questa guardia, scrivere il primo messaggio
+  // mentre il pre-caricamento all'avvio è ancora in corso faceva partire DUE
+  // caricamenti dello stesso .gguf da 5GB su una macchina da 16GB.
+  if (sessionLoad && sessionLoad.modelPath === modelPath) {
+    onStatus?.('🧠 Caricamento modello locale in memoria…')
+    try {
+      return await sessionLoad.promise
+    } finally {
+      onStatus?.(null)
+    }
+  }
+
   if (state) await disposeModel()
 
   onStatus?.('🧠 Caricamento modello locale in memoria…')
-  try {
+  const load = (async (): Promise<LlamaChatSession> => {
     const nlc = await loadNlc()
     const llama = await getLlamaInstance()
     const model = await llama.loadModel({ modelPath })
@@ -62,7 +88,13 @@ export async function ensureSession(
     state = { llama, modelPath, model, context, session }
     log.info(`[local-llm] modello caricato: ${modelPath} (ctx=${context.contextSize})`)
     return session
+  })()
+  sessionLoad = { modelPath, promise: load }
+
+  try {
+    return await load
   } finally {
+    sessionLoad = null
     onStatus?.(null)
   }
 }
@@ -74,6 +106,16 @@ export function currentContextSize(): number | null {
 }
 
 export async function disposeModel(): Promise<void> {
+  // Un caricamento in volo va atteso, altrimenti finirebbe DOPO il dispose e
+  // lascerebbe in RAM un modello che nessuno possiede più (succedeva cambiando
+  // motore o tier mentre il pre-caricamento all'avvio era ancora in corso).
+  if (sessionLoad) {
+    try {
+      await sessionLoad.promise
+    } catch {
+      // il caricamento è fallito: non c'è nulla da liberare
+    }
+  }
   if (!state) return
   const { session, context, model } = state
   state = null
