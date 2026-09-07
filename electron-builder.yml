@@ -18,6 +18,11 @@ files:
   - "!**/node_modules/@node-llama-cpp/mac-x64/**"
   - "!**/node_modules/sherpa-onnx-darwin-x64/**"
   - "!**/node_modules/sherpa-onnx-win-ia32/**"
+  # Il runtime della voce neurale viene copiato in src/renderer/public/voice
+  # da scripts/copy-voice-runtime.mjs e finisce in out/renderer/voice: la copia
+  # in node_modules è peso morto (406 file, ~160MB nell'asar).
+  - "!**/node_modules/onnxruntime-web/**"
+  - "!**/node_modules/@diffusionstudio/piper-wasm/**"
 # I moduli nativi devono restare fuori dall'asar: i binari .node/.dll/.dylib
 # non sono caricabili dall'archivio (ERR_DLOPEN).
 asarUnpack:
