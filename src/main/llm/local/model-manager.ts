@@ -3,9 +3,9 @@ import { join, basename } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { rm, statfs } from 'fs/promises'
 import log from 'electron-log/main'
-import { loadNlc, disposeModel } from './llama-runtime'
+import { loadNlc, disposeModel, ensureSession } from './llama-runtime'
 import { getModelSpec, MODEL_CATALOG } from './model-catalog'
-import type { LocalModelTier } from '../../storage/app-settings'
+import { loadAppSettings, type LocalModelTier } from '../../storage/app-settings'
 import type { ModelDownloader } from 'node-llama-cpp'
 
 export interface DownloadProgress {
@@ -174,6 +174,25 @@ export async function downloadModel(
     return { ok: false, error: `Errore durante il download: ${msg}` }
   } finally {
     activeDownloads.delete(tier)
+  }
+}
+
+// All'avvio, se il motore è locale, carica il modello in memoria mentre
+// l'utente ancora non ha scritto nulla. Prima il caricamento (15-60s a seconda
+// della taglia) veniva pagato per intero dal primo messaggio.
+export async function preloadLocalModel(): Promise<void> {
+  const { aiProvider, localModelTier } = loadAppSettings()
+  if (aiProvider !== 'local') return
+  const modelPath = getModelPath(localModelTier)
+  if (!modelPath) return
+  const spec = getModelSpec(localModelTier)
+  const startedAt = Date.now()
+  try {
+    await ensureSession(modelPath, spec.contextSize)
+    log.info(`[local-llm] modello ${localModelTier} pre-caricato in ${Math.round((Date.now() - startedAt) / 1000)}s`)
+  } catch (e) {
+    // Non è fatale: al primo messaggio si ricarica per la via normale
+    log.warn(`[local-llm] pre-caricamento fallito: ${e instanceof Error ? e.message : String(e)}`)
   }
 }
 

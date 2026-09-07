@@ -7,6 +7,7 @@ import { registerSettingsIpc } from './ipc/settings.ipc'
 import { registerVoiceIpc } from './ipc/voice.ipc'
 import { registerClientsIpc } from './ipc/clients.ipc'
 import { registerLocalModelIpc } from './ipc/local-model.ipc'
+import { preloadLocalModel } from './llm/local/model-manager'
 import { loadAppSettings } from './storage/app-settings'
 import { disposeModel } from './llm/local/llama-runtime'
 import { disposeVoiceWorker } from './voice/local-voice'
@@ -226,6 +227,9 @@ app.whenReady().then(() => {
   registerVoiceIpc(win)
   registerClientsIpc()
   registerLocalModelIpc(win)
+
+  // Fire-and-forget: la finestra è già visibile, il modello si scalda dietro.
+  void preloadLocalModel()
   registerUpdaterIpc()
   setupAutoUpdater()
 

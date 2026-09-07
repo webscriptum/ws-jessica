@@ -425,6 +425,27 @@ function buildClientProfileSection(p: ClientProfile): string {
 // read_output_file è escluso perché resolveOutputDir può aprire un dialog.
 const PARALLEL_SAFE_TOOLS = new Set(['read_source_file', 'fetch_url'])
 
+// Descrizioni compatte per il provider locale. Le descrizioni complete valgono
+// ~4100 token — un quarto del contesto di 16k — e vengono ri-processate a OGNI
+// turno: sono la voce più grossa del tempo che passa prima del primo token.
+// Contengono guide CSS e regole di impaginazione che un modello da 3-8B non
+// sfrutta comunque. I tool restano TUTTI: toglierli spezzerebbe i comandi
+// vocali del tipo "fammi la presentazione", che è proprio il caso d'uso.
+const LOCAL_TOOL_DESCRIPTIONS: Record<string, string> = {
+  read_source_file:
+    "Legge un file di contesto caricato dall'utente (testo, PDF, DOCX, XLSX, immagini). Parametro: filename.",
+  write_deliverable: 'Scrive un file Markdown (.md) nella cartella output. Parametri: filename, content.',
+  write_word: 'Scrive un documento Word (.docx). Parametri: filename, title, content in markdown.',
+  write_pdf: "Scrive un PDF. Parametri: filename, title, content in markdown. Usa [LANDSCAPE] per l'orizzontale.",
+  write_presentation: 'Scrive una presentazione PowerPoint (.pptx). Parametri: filename, title, slides.',
+  write_excel: 'Scrive un foglio Excel (.xlsx). Parametri: filename, sheets con righe e intestazioni.',
+  write_html: 'Scrive una pagina HTML autonoma. Parametri: filename, title, content.',
+  read_output_file: 'Rilegge un file già prodotto per controllarlo e correggerlo. Parametro: filename.',
+  fetch_url: 'Scarica e analizza una pagina web. Parametro: url.',
+  save_client_info: 'Salva o aggiorna i dati del cliente (colori, font, tono di voce, note). Parametri: campi da aggiornare.',
+  generate_image: "Genera un'immagine con DALL·E. Parametri: prompt, filename."
+}
+
 export class Orchestrator {
   private conversation: Anthropic.MessageParam[] = []
   private cancelled = false
@@ -596,8 +617,17 @@ export class Orchestrator {
     return deliverables
   }
 
+
   private buildToolset(): Anthropic.Tool[] {
     let tools = loadOpenAiKey() ? TOOLS : TOOLS.filter((t) => t.name !== 'generate_image')
+
+    // Il provider locale non ha prompt caching da preservare, quindi qui si può
+    // accorciare senza controindicazioni (sul cloud invaliderebbe la cache).
+    if (this.provider.id === 'local') {
+      tools = tools.map((t) =>
+        LOCAL_TOOL_DESCRIPTIONS[t.name] ? { ...t, description: LOCAL_TOOL_DESCRIPTIONS[t.name] } : t
+      )
+    }
     // Sul tier locale Base i formati lunghi e strutturati (PDF, PPTX) escono
     // male da un modello 4B: il tool resta ma con un avviso nella descrizione.
     if (this.provider.id === 'local' && loadAppSettings().localModelTier === 'base') {
