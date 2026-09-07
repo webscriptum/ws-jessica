@@ -1,9 +1,11 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import log from 'electron-log/main'
+import { readFile } from 'fs/promises'
 import { loadOpenAiKey } from '../storage/secure-storage'
 import { loadAppSettings } from '../storage/app-settings'
 import {
   voiceAssetsReady,
+  getVoicePaths,
   voiceAssetsStatus,
   downloadVoiceAssets,
   cancelVoiceAssetsDownload,
@@ -96,6 +98,28 @@ export function registerVoiceIpc(win: BrowserWindow): void {
 
       const data = (await response.json()) as { text: string }
       return { ok: true, text: data.text }
+    }
+  )
+
+  // Il renderer non può leggere da file://, quindi i byte del modello neurale
+  // glieli passiamo noi: una volta sola, alla prima sintesi.
+  ipcMain.handle(
+    'voice:readModel',
+    async (): Promise<{ ok: boolean; onnx?: ArrayBuffer; configJson?: string; error?: string }> => {
+      const p = getVoicePaths()
+      try {
+        const [onnx, cfg] = await Promise.all([readFile(p.ttsModel), readFile(p.ttsConfig, 'utf-8')])
+        log.info(`[voice] modello voce neurale servito al renderer (${Math.round(onnx.length / 1048576)}MB)`)
+        return {
+          ok: true,
+          onnx: onnx.buffer.slice(onnx.byteOffset, onnx.byteOffset + onnx.byteLength),
+          configJson: cfg
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        log.warn(`[voice] modello voce neurale non leggibile: ${msg}`)
+        return { ok: false, error: msg }
+      }
     }
   )
 

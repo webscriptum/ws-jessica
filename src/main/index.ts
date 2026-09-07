@@ -1,5 +1,6 @@
-import { app, BrowserWindow, shell, dialog, session, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, shell, dialog, session, ipcMain, screen , protocol, net } from 'electron'
 import { join } from 'path'
+import { pathToFileURL } from 'url'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import log from 'electron-log/main'
 import { registerAgentIpc } from './ipc/agent.ipc'
@@ -13,6 +14,31 @@ import { disposeModel } from './llm/local/llama-runtime'
 import { disposeVoiceWorker } from './voice/local-voice'
 
 let mainWindow: BrowserWindow | null = null
+
+// Il renderer in produzione è caricato da file://, dove Chromium blocca fetch()
+// verso le sottorisorse. Il runtime della voce neurale (wasm di onnxruntime e
+// del fonemizzatore, più i 17MB di dati espeak) viene quindi servito da uno
+// schema dedicato invece che da percorsi relativi: in sviluppo funzionerebbe
+// comunque perché lì il renderer sta su http://localhost, e il guasto sarebbe
+// comparso solo una volta installata l'app.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'jessica-voice',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true }
+  }
+])
+
+function registerVoiceProtocol(): void {
+  protocol.handle('jessica-voice', (request) => {
+    const name = new URL(request.url).pathname.split('/').filter(Boolean).pop() ?? ''
+    // Solo i file del runtime voce: niente risalita di percorso
+    if (!/^[a-zA-Z0-9._-]+$/.test(name)) {
+      return new Response('nome file non valido', { status: 400 })
+    }
+    const file = join(__dirname, '..', 'renderer', 'voice', name)
+    return net.fetch(pathToFileURL(file).toString())
+  })
+}
 
 function createWindow(): void {
   const settings = loadAppSettings()
@@ -211,6 +237,7 @@ app.whenReady().then(() => {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
 
+  registerVoiceProtocol()
   createWindow()
 
   // Toggle click-through in mascot mode

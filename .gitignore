@@ -6,3 +6,6 @@ dist/
 *.log
 *.docx
 *.tsbuildinfo
+
+# Runtime voce neurale: copiato da node_modules al build
+src/renderer/public/voice/

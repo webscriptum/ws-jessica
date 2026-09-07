@@ -6,6 +6,7 @@ import OnboardingFlow from './OnboardingFlow'
 import VoiceButton, { type RecordState } from './VoiceButton'
 import type { VoiceMode, AiProvider } from '../../../preload/index.d'
 import { speakWithSystemVoice, stopSystemVoice, systemVoiceAvailable } from '../system-voice'
+import { synthesizeWithPiper, ensurePiperReady } from '../piper-voice'
 
 interface Message {
   id: string
@@ -165,22 +166,48 @@ export default function ChatWindow({
     ])
   }, [])
 
-  // Con la voce di sistema si parla frase per frase senza sintesi anticipata:
-  // l'attacco è immediato. Sul percorso OpenAI resta il prefetch, perché lì la
-  // sintesi è una chiamata di rete e aspettarla a fine frase si sentirebbe.
+  // Tre percorsi: voce neurale Piper in WASM (locale, la migliore), voce di
+  // sistema come ripiego se il modello non c'è, e OpenAI sul cloud — dove resta
+  // il prefetch, perché lì la sintesi è una chiamata di rete.
   const drainTtsQueue = useCallback(async (): Promise<void> => {
     if (isTtsBusyRef.current) return
     isTtsBusyRef.current = true
     setIsSpeaking(true)
     const generation = ttsGenerationRef.current
 
-    // Voce locale = sintesi di sistema: sherpa/Piper non è utilizzabile dentro
-    // Electron (vedi system-voice.ts). Il percorso IPC resta per OpenAI.
-    if (aiProvider === 'local' && systemVoiceAvailable()) {
+    // Il percorso IPC (tts:speak) resta solo per OpenAI: la voce locale si
+    // sintetizza qui nel renderer, perché sherpa-onnx non può farlo in Electron.
+    if (aiProvider === 'local') {
+      // Piper neurale in WASM se il modello c'è; la voce di sistema (Elsa) resta
+      // come ripiego, perché è robotica ma non richiede nulla.
+      const piperPronto = await ensurePiperReady()
       try {
         while (ttsQueueRef.current.length > 0) {
           if (generation !== ttsGenerationRef.current) return
           const text = ttsQueueRef.current.shift()!
+
+          if (piperPronto) {
+            const sintesi = await synthesizeWithPiper(text)
+            if (generation !== ttsGenerationRef.current) {
+              if (sintesi.url) URL.revokeObjectURL(sintesi.url)
+              return
+            }
+            if (sintesi.ok && sintesi.url) {
+              const audio = new Audio(sintesi.url)
+              currentAudioRef.current = audio
+              await new Promise<void>((r) => {
+                audio.onended = (): void => r()
+                audio.onerror = (): void => r()
+                audio.play().catch(() => r())
+              })
+              if (currentAudioRef.current === audio) currentAudioRef.current = null
+              URL.revokeObjectURL(sintesi.url)
+              continue
+            }
+            reportTtsFailure(sintesi.error ?? 'sintesi neurale fallita')
+          }
+
+          if (!systemVoiceAvailable()) break
           const result = await speakWithSystemVoice(text)
           if (generation !== ttsGenerationRef.current) return
           if (!result.ok) reportTtsFailure(result.error ?? 'errore sconosciuto')
@@ -407,7 +434,10 @@ export default function ChatWindow({
   useEffect(() => {
     if (voiceMode !== 'conversation') return
     window.electronAPI.warmUpVoice().catch(() => undefined)
-  }, [voiceMode])
+    // Anche la voce in uscita si scalda qui: caricare 60MB di modello alla
+    // prima frase si sentirebbe tutto.
+    if (aiProvider === 'local') void ensurePiperReady()
+  }, [voiceMode, aiProvider])
 
   const sendText = useCallback((text: string): void => {
     if (!text.trim() || isRunning) return

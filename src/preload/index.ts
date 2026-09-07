@@ -135,6 +135,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Voice: pre-caricamento motori locali (entrando in modalità conversazione)
   warmUpVoice: () => ipcRenderer.invoke('voice:warmup'),
 
+  // Voce neurale: i byte del modello Piper (il renderer non legge da file://)
+  readVoiceModel: () => ipcRenderer.invoke('voice:readModel'),
+
   // Voice: asset locali (Whisper + Piper)
   getVoiceAssetsStatus: () => ipcRenderer.invoke('voiceassets:status'),
   downloadVoiceAssets: () => ipcRenderer.invoke('voiceassets:download'),
