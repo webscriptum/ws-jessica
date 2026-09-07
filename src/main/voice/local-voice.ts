@@ -32,11 +32,11 @@ function ensureWorker(): Worker {
 }
 
 // Tetto per ogni richiesta al worker. Senza, una chiamata che non torna mai
-// lascia la promise appesa per sempre: nel renderer la coda TTS resta marcata
+// lascia la promise appesa per sempre: nel renderer la coda resta marcata
 // "occupata" e la voce muore in silenzio per tutta la sessione, senza errori.
-// Valori larghi rispetto al normale (TTS ~250ms, STT ~1s, warmup ~4s a caldo):
+// Valori larghi rispetto al normale (STT ~1s, warmup ~4s a caldo):
 // qui interessa solo non restare appesi.
-const CALL_TIMEOUT_MS: Record<string, number> = { tts: 30_000, stt: 60_000, warmup: 90_000 }
+const CALL_TIMEOUT_MS: Record<string, number> = { stt: 60_000, warmup: 90_000 }
 
 function call(
   req: Record<string, unknown>,
@@ -85,8 +85,8 @@ export async function localTranscribe(wav: ArrayBuffer): Promise<{ ok: boolean; 
   }
 }
 
-// Chiamata quando l'utente entra in modalità conversazione: carica Whisper e
-// Piper in anticipo, così la prima battuta non aspetta ~375MB di modelli.
+// Chiamata quando l'utente entra in modalità conversazione: carica in anticipo
+// il riconoscitore, così la prima battuta non aspetta il modello.
 // Idempotente e non bloccante — se fallisce, la prima richiesta ricaricherà.
 let warmedUp = false
 export async function warmUpVoice(): Promise<void> {
@@ -99,12 +99,9 @@ export async function warmUpVoice(): Promise<void> {
       encoder: p.sttEncoder,
       decoder: p.sttDecoder,
       joiner: p.sttJoiner,
-      sttTokens: p.sttTokens,
-      model: p.piperModel,
-      tokens: p.piperTokens,
-      dataDir: p.piperDataDir
+      tokens: p.sttTokens
     })
-    log.info('[voice] motori vocali pre-caricati')
+    log.info('[voice] riconoscitore vocale pre-caricato')
   } catch (e) {
     warmedUp = false
     log.warn(`[voice] pre-caricamento fallito: ${e instanceof Error ? e.message : String(e)}`)
@@ -123,21 +120,5 @@ export async function disposeVoiceWorker(): Promise<void> {
     await w.terminate()
   } catch {
     // worker già uscito
-  }
-}
-
-export async function localSpeak(text: string): Promise<{ ok: boolean; base64?: string; error?: string }> {
-  const p = getVoicePaths()
-  try {
-    const res = await call({
-      type: 'tts',
-      text,
-      model: p.piperModel,
-      tokens: p.piperTokens,
-      dataDir: p.piperDataDir
-    })
-    return { ok: res.ok, base64: res.wavBase64, error: res.error }
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
 }

@@ -31,14 +31,14 @@ const LEGACY_WHISPER_FILES = [
   'small-tokens.txt'
 ]
 
-// TTS: voce italiana Piper "paola" (femminile). Il tar.bz2 include il modello
-// VITS, i tokens e la cartella espeak-ng-data richiesta da Piper.
-const PIPER_URL =
-  'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-it_IT-paola-medium.tar.bz2'
+// TTS: nessun asset da scaricare. La voce locale usa la sintesi di sistema
+// (vedi renderer/src/system-voice.ts): Piper via sherpa-onnx non è utilizzabile
+// dentro Electron, che vieta gli ArrayBuffer esterni restituiti da
+// OfflineTts.generate(). La cartella resta elencata solo per poterla ripulire
+// sulle installazioni che l'avevano già scaricata.
 const PIPER_DIR = 'vits-piper-it_IT-paola-medium'
-const PIPER_APPROX_SIZE = 66 * 1024 ** 2
 
-export const VOICE_ASSETS_TOTAL_BYTES = PARAKEET_DOWNLOAD_SIZE + PIPER_APPROX_SIZE
+export const VOICE_ASSETS_TOTAL_BYTES = PARAKEET_DOWNLOAD_SIZE
 
 export interface VoiceAssetsStatus {
   downloaded: boolean
@@ -65,34 +65,26 @@ export function getVoicePaths(): {
   sttDecoder: string
   sttJoiner: string
   sttTokens: string
-  piperModel: string
-  piperTokens: string
-  piperDataDir: string
 } {
   const dir = voiceDir()
   const stt = join(dir, PARAKEET_DIR)
-  const piper = join(dir, PIPER_DIR)
   return {
     sttEncoder: join(stt, 'encoder.int8.onnx'),
     sttDecoder: join(stt, 'decoder.int8.onnx'),
     sttJoiner: join(stt, 'joiner.int8.onnx'),
-    sttTokens: join(stt, 'tokens.txt'),
-    piperModel: join(piper, 'it_IT-paola-medium.onnx'),
-    piperTokens: join(piper, 'tokens.txt'),
-    piperDataDir: join(piper, 'espeak-ng-data')
+    sttTokens: join(stt, 'tokens.txt')
   }
 }
 
 export function voiceAssetsReady(): boolean {
   const p = getVoicePaths()
+  // Solo lo STT: la voce in uscita non ha più asset da scaricare. Prima
+  // bastava un file Piper mancante per disattivare anche il riconoscimento.
   return (
     existsSync(p.sttEncoder) &&
     existsSync(p.sttDecoder) &&
     existsSync(p.sttJoiner) &&
-    existsSync(p.sttTokens) &&
-    existsSync(p.piperModel) &&
-    existsSync(p.piperTokens) &&
-    existsSync(p.piperDataDir)
+    existsSync(p.sttTokens)
   )
 }
 
@@ -214,14 +206,12 @@ export async function downloadVoiceAssets(
       await downloadAndExtract(PARAKEET_URL, 'parakeet-stt.tar.bz2', PARAKEET_DIR, dir, signal, report)
     }
 
-    if (!existsSync(paths.piperModel) || !existsSync(paths.piperTokens) || !existsSync(paths.piperDataDir)) {
-      await downloadAndExtract(PIPER_URL, 'piper-voice.tar.bz2', PIPER_DIR, dir, signal, report)
-    }
-
-    // I file Whisper delle vecchie versioni non servono più: 375MB da liberare
+    // Asset delle vecchie versioni che non servono più: Whisper (375MB) e la
+    // voce Piper (66MB), sostituita dalla sintesi di sistema.
     for (const name of LEGACY_WHISPER_FILES) {
       await rm(join(dir, name), { force: true })
     }
+    await rm(join(dir, PIPER_DIR), { recursive: true, force: true })
 
     log.info('[voice] asset vocali locali scaricati')
     return { ok: true }

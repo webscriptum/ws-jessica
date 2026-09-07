@@ -4,7 +4,8 @@ import JessicaAvatar from './JessicaAvatar'
 import AssetPanel from './AssetPanel'
 import OnboardingFlow from './OnboardingFlow'
 import VoiceButton, { type RecordState } from './VoiceButton'
-import type { VoiceMode } from '../../../preload/index.d'
+import type { VoiceMode, AiProvider } from '../../../preload/index.d'
+import { speakWithSystemVoice, stopSystemVoice, systemVoiceAvailable } from '../system-voice'
 
 interface Message {
   id: string
@@ -62,6 +63,7 @@ export default function ChatWindow({
   const [hasContext, setHasContext] = useState(false)
   const [onboardingDone, setOnboardingDone] = useState(false)
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('off')
+  const [aiProvider, setAiProvider] = useState<AiProvider>('cloud')
   const [pendingResponse, setPendingResponse] = useState(false)
   const [agentStatus, setAgentStatus] = useState<string | null>(null)
   const [runningSeconds, setRunningSeconds] = useState(0)
@@ -116,6 +118,7 @@ export default function ChatWindow({
     })
     window.electronAPI.getSettings().then((s) => {
       setVoiceMode(s.voiceMode)
+      setAiProvider(s.aiProvider)
     })
     return () => {
       currentAudioRef.current?.pause()
@@ -162,14 +165,33 @@ export default function ChatWindow({
     ])
   }, [])
 
-  // Tiene la sintesi della frase successiva un passo avanti alla riproduzione:
-  // prima si aspettava la fine dell'audio per iniziare a sintetizzare la frase
-  // dopo, e fra una frase e l'altra restava il silenzio di Piper (0,5-1,5s).
+  // Con la voce di sistema si parla frase per frase senza sintesi anticipata:
+  // l'attacco è immediato. Sul percorso OpenAI resta il prefetch, perché lì la
+  // sintesi è una chiamata di rete e aspettarla a fine frase si sentirebbe.
   const drainTtsQueue = useCallback(async (): Promise<void> => {
     if (isTtsBusyRef.current) return
     isTtsBusyRef.current = true
     setIsSpeaking(true)
     const generation = ttsGenerationRef.current
+
+    // Voce locale = sintesi di sistema: sherpa/Piper non è utilizzabile dentro
+    // Electron (vedi system-voice.ts). Il percorso IPC resta per OpenAI.
+    if (aiProvider === 'local' && systemVoiceAvailable()) {
+      try {
+        while (ttsQueueRef.current.length > 0) {
+          if (generation !== ttsGenerationRef.current) return
+          const text = ttsQueueRef.current.shift()!
+          const result = await speakWithSystemVoice(text)
+          if (generation !== ttsGenerationRef.current) return
+          if (!result.ok) reportTtsFailure(result.error ?? 'errore sconosciuto')
+        }
+      } finally {
+        isTtsBusyRef.current = false
+        setIsSpeaking(false)
+      }
+      maybeRearmMic()
+      return
+    }
 
     type Spoken = Awaited<ReturnType<typeof window.electronAPI.speakText>>
     // Non rifiuta mai: una sintesi in prefetch che viene abbandonata (audio
@@ -226,7 +248,7 @@ export default function ChatWindow({
     }
 
     maybeRearmMic()
-  }, [maybeRearmMic, reportTtsFailure])
+  }, [aiProvider, maybeRearmMic, reportTtsFailure])
 
   const enqueueTts = useCallback((text: string): void => {
     if (voiceMode !== 'conversation') return
@@ -240,6 +262,7 @@ export default function ChatWindow({
 
   const stopTts = useCallback((): void => {
     ttsGenerationRef.current++
+    stopSystemVoice()
     currentAudioRef.current?.pause()
     currentAudioRef.current = null
     ttsQueueRef.current = []

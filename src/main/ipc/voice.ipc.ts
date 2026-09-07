@@ -9,7 +9,7 @@ import {
   cancelVoiceAssetsDownload,
   deleteVoiceAssets
 } from '../voice/voice-assets'
-import { localTranscribe, localSpeak, warmUpVoice } from '../voice/local-voice'
+import { localTranscribe, warmUpVoice } from '../voice/local-voice'
 
 const PROGRESS_THROTTLE_MS = 500
 
@@ -23,24 +23,13 @@ const NO_VOICE_ERROR =
   'Voce non configurata: scarica il pacchetto "Voce locale" nelle Impostazioni oppure inserisci la OpenAI key.'
 
 export function registerVoiceIpc(win: BrowserWindow): void {
-  // TTS: text → base64 audio (wav locale, mp3 OpenAI)
+  // TTS: text → base64 audio (mp3 OpenAI)
   ipcMain.handle(
     'tts:speak',
     async (_e, text: string): Promise<{ ok: boolean; base64?: string; mime?: string; error?: string }> => {
-      if (useLocalVoice()) {
-        const startedAt = Date.now()
-        const result = await localSpeak(text.slice(0, 4096))
-        // Un TTS che fallisce era finora invisibile: l'errore tornava al
-        // renderer, finiva in una console che nessuno guarda, e in app si
-        // vedeva solo Jessica che non parlava.
-        if (result.ok) {
-          log.info(`[voice] tts locale ok: ${text.length} char in ${Date.now() - startedAt}ms`)
-        } else {
-          log.error(`[voice] tts locale FALLITO dopo ${Date.now() - startedAt}ms: ${result.error}`)
-        }
-        return { ...result, mime: 'audio/wav' }
-      }
-
+      // La voce locale non passa più di qui: è sintetizzata nel renderer con la
+      // voce di sistema (renderer/src/system-voice.ts), perché sherpa-onnx non
+      // può generare audio dentro Electron. Qui resta solo il percorso OpenAI.
       const openAiKey = loadOpenAiKey()
       if (!openAiKey) {
         log.warn(
@@ -117,7 +106,7 @@ export function registerVoiceIpc(win: BrowserWindow): void {
     return { ok: true }
   })
 
-  // ── Asset vocali locali (Whisper + Piper) ────────────────────────────────
+  // ── Asset vocali locali (modello di riconoscimento) ─────────────────────
 
   ipcMain.handle('voiceassets:status', () => voiceAssetsStatus())
 

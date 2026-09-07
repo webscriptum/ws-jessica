@@ -167,7 +167,7 @@ export default function LocalModelManager({ selectedTier, onSelectTier }: Props)
         )
       })}
 
-      {/* ── Voce locale (Whisper + Piper) ── */}
+      {/* ── Riconoscimento vocale locale (Parakeet) ── */}
       {voiceStatus && (
         <div
           style={{
@@ -180,7 +180,7 @@ export default function LocalModelManager({ selectedTier, onSelectTier }: Props)
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <div>
               <div style={{ fontWeight: 600 }}>
-                {voiceStatus.downloaded ? '✓ ' : ''}Voce locale (italiano)
+                {voiceStatus.downloaded ? '✓ ' : ''}Riconoscimento vocale (italiano)
                 <span style={{ fontWeight: 400, opacity: 0.7 }}> — {formatGb(voiceStatus.approxSizeBytes)}</span>
               </div>
               <p className="settings-hint" style={{ margin: '4px 0 0' }}>
