@@ -171,6 +171,7 @@ export interface ElectronAPI {
   transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<{ ok: boolean; text?: string; error?: string }>
   warmUpVoice: () => Promise<{ ok: boolean }>
   readVoiceModel: () => Promise<{ ok: boolean; onnx?: ArrayBuffer; configJson?: string; error?: string }>
+  reportVoiceError: (message: string) => void
 
   // Voice: asset locali (Whisper + Piper)
   getVoiceAssetsStatus: () => Promise<{ downloaded: boolean; downloading: boolean; approxSizeBytes: number }>

@@ -137,6 +137,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Voce neurale: i byte del modello Piper (il renderer non legge da file://)
   readVoiceModel: () => ipcRenderer.invoke('voice:readModel'),
+  reportVoiceError: (message: string) => ipcRenderer.send('voice:error', message),
 
   // Voice: asset locali (Whisper + Piper)
   getVoiceAssetsStatus: () => ipcRenderer.invoke('voiceassets:status'),

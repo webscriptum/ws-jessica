@@ -36,6 +36,11 @@ let session: ort.InferenceSession | null = null
 let config: PiperConfig | null = null
 let loading: Promise<boolean> | null = null
 let phonemizerScript: Promise<void> | null = null
+let lastError: string | null = null
+
+export function lastPiperError(): string | null {
+  return lastError
+}
 
 function loadPhonemizerScript(): Promise<void> {
   if (phonemizerScript) return phonemizerScript
@@ -75,7 +80,10 @@ export function ensurePiperReady(): Promise<boolean> {
     return true
   })().catch((e) => {
     loading = null
-    console.error('[piper] caricamento fallito:', e)
+    // Non basta console.error: il renderer non finisce in main.log e un
+    // fallimento qui si vede solo come "voce robotica", senza spiegazione.
+    lastError = e instanceof Error ? e.message : String(e)
+    window.electronAPI.reportVoiceError(lastError)
     return false
   })
 

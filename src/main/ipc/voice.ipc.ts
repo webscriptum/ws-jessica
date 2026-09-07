@@ -101,6 +101,13 @@ export function registerVoiceIpc(win: BrowserWindow): void {
     }
   )
 
+  // Il renderer logga qui i fallimenti della voce neurale: la sua console
+  // non finisce in main.log, e senza questo un guasto si manifesta solo come
+  // "voce robotica" senza alcuna traccia.
+  ipcMain.on('voice:error', (_e, message: string) => {
+    log.error(`[voice] voce neurale non disponibile, ripiego sulla voce di sistema: ${message}`)
+  })
+
   // Il renderer non può leggere da file://, quindi i byte del modello neurale
   // glieli passiamo noi: una volta sola, alla prima sintesi.
   ipcMain.handle(
