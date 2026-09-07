@@ -16,7 +16,11 @@ import type {
 
 // Guardrail per modelli piccoli: evitano loop di tool infiniti e turni eterni
 const MAX_TOOL_CALLS_PER_TURN = 12
-const TURN_TIMEOUT_MS = 10 * 60_000
+// 10 minuti erano un'eternità in chat: un turno locale normale dura 6-24s.
+// Osservato un turno che ha macinato 8m54s prima di morire per contesto
+// pieno. Con stopOnAbortSignal il tetto restituisce il parziale invece di
+// buttare via tutto.
+const TURN_TIMEOUT_MS = 4 * 60_000
 const CANCEL_POLL_MS = 250
 
 function localToolId(): string {
@@ -40,6 +44,17 @@ function mapLocalContextError(e: unknown): unknown {
     )
   }
   return e
+}
+
+// Un risultato di tool non tagliato può da solo riempire il contesto:
+// fetch_url ne restituisce fino a ~5KB, un quarto di un contesto da 8k. Il
+// contenuto completo resta comunque su disco.
+const MAX_TOOL_RESULT_CHARS = 2_500
+
+function truncateForLocal(text: string): string {
+  if (text.length <= MAX_TOOL_RESULT_CHARS) return text
+  const nota = "[...contenuto troncato: erano " + text.length + " caratteri, il modello locale non li regge tutti]"
+  return text.slice(0, MAX_TOOL_RESULT_CHARS) + String.fromCharCode(10, 10) + nota
 }
 
 function serializeToolResult(result: Anthropic.ToolResultBlockParam): string {
@@ -90,6 +105,19 @@ export class LocalLlamaProvider implements LLMProvider {
     if (!modelPath) throw new Error('Modello locale non scaricato. Vai nelle Impostazioni.')
 
     const nlc = await loadNlc()
+
+    // Quanto testo di history ci sta davvero: il contesto reale (che
+    // node-llama-cpp può aver ridotto per mancanza di memoria) meno lo spazio
+    // per generare, meno system prompt e definizioni dei tool. ~3 caratteri
+    // per token in italiano. Prima era un 20.000 fisso che ignorava tutto
+    // questo, ed è per questo che il contesto si riempiva.
+    const historyBudget = (): number => {
+      const ctx = currentContextSize() ?? spec.contextSize
+      const perGenerare = Math.min(spec.maxTokens, req.options.maxTokens)
+      const sistema = systemText(req.system).length
+      const tool = JSON.stringify(req.tools).length
+      return Math.max(1_500, (ctx - perGenerare - 512) * 3 - sistema - tool)
+    }
     // Tier e URI nel log: senza, un tier che punta a un .gguf di un catalogo
     // vecchio carica il modello sbagliato senza che nulla lo dica.
     log.info(`[local-llm] tier=${localModelTier} uri=${spec.uri} file=${modelPath}`)
@@ -107,7 +135,9 @@ export class LocalLlamaProvider implements LLMProvider {
       this.aligned.session === session &&
       this.aligned.expectedLen === req.history.length - 1
     if (!isAligned) {
-      session.setChatHistory(mapHistory(systemText(req.system), req.history.slice(0, -1)))
+      session.setChatHistory(
+        mapHistory(systemText(req.system), req.history.slice(0, -1), historyBudget())
+      )
     }
 
     const appended: Anthropic.MessageParam[] = []
@@ -151,7 +181,7 @@ export class LocalLlamaProvider implements LLMProvider {
           appended.push({ role: 'assistant', content: assistantContent })
           appended.push({ role: 'user', content: [result] })
 
-          return serializeToolResult(result)
+          return truncateForLocal(serializeToolResult(result))
         }
       })
     }
@@ -160,11 +190,16 @@ export class LocalLlamaProvider implements LLMProvider {
     const cancelPoll = setInterval(() => {
       if (req.isCancelled()) abort.abort()
     }, CANCEL_POLL_MS)
-    const timeout = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS)
+    const timeout = setTimeout(() => {
+      log.warn(`[local-llm] turno oltre ${TURN_TIMEOUT_MS / 60_000} minuti: interrotto, restituisco il parziale`)
+      abort.abort()
+    }, TURN_TIMEOUT_MS)
 
-    try {
-      const startedAt = Date.now()
-      const responseText = await session.prompt(userText, {
+    const isContextFull = (e: unknown): boolean =>
+      e instanceof Error && /context shift strategy|fits? the context size/i.test(e.message)
+
+    const chiedi = (): Promise<string> =>
+      session.prompt(userText, {
         functions,
         maxTokens: Math.min(spec.maxTokens, req.options.maxTokens),
         signal: abort.signal,
@@ -175,6 +210,26 @@ export class LocalLlamaProvider implements LLMProvider {
         }
       })
 
+    try {
+      const startedAt = Date.now()
+      let responseText: string
+      let historyRidotta = false
+      try {
+        responseText = await chiedi()
+        historyRidotta = true
+      } catch (e) {
+        if (!isContextFull(e)) throw e
+        // Invece di far morire il turno, si riparte con molta meno memoria
+        // della conversazione: una risposta con meno contesto è comunque
+        // meglio di un errore sul più bello.
+        log.warn("[local-llm] contesto pieno, riprovo con history ridotta")
+        pendingText = ""
+        session.setChatHistory(
+          mapHistory(systemText(req.system), req.history.slice(0, -1), Math.floor(historyBudget() / 4))
+        )
+        responseText = await chiedi()
+      }
+
       const finalText = pendingText || responseText
       if (finalText) {
         appended.push({ role: 'assistant', content: [{ type: 'text', text: finalText }] })
@@ -183,11 +238,13 @@ export class LocalLlamaProvider implements LLMProvider {
         `[local-llm] turno completato in ${Math.round((Date.now() - startedAt) / 1000)}s — tool=${toolCallCount} chars=${finalText.length}`
       )
 
-      this.aligned = {
-        convId: req.options.conversationId,
-        session,
-        expectedLen: req.history.length + appended.length
-      }
+      this.aligned = historyRidotta
+        ? null
+        : {
+            convId: req.options.conversationId,
+            session,
+            expectedLen: req.history.length + appended.length
+          }
       return { appendedMessages: appended }
     } catch (e) {
       this.aligned = null
