@@ -23,6 +23,14 @@ function localToolId(): string {
   return `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
+// Il driver Vulkan può perdere il contesto sotto pressione di memoria: su una
+// iGPU che condivide la RAM basta sommare modello, riconoscitore e voce. Da
+// quel momento la sessione è morta e OGNI turno successivo fallisce con "Eval
+// has failed" — senza riconoscerlo, l'app resta inutilizzabile fino al riavvio.
+function isGpuDeviceLost(e: unknown): boolean {
+  return e instanceof Error && /ErrorDeviceLost|Eval has failed|device lost/i.test(e.message)
+}
+
 // node-llama-cpp segnala così un prompt di sistema + messaggio che non entrano
 // nella finestra di contesto: tradotto in un messaggio azionabile per l'utente
 function mapLocalContextError(e: unknown): unknown {
@@ -183,6 +191,15 @@ export class LocalLlamaProvider implements LLMProvider {
       return { appendedMessages: appended }
     } catch (e) {
       this.aligned = null
+      if (isGpuDeviceLost(e)) {
+        // Il modello va buttato: il turno successivo lo ricarica da zero invece
+        // di riusare una sessione su un dispositivo che non esiste più.
+        log.error('[local-llm] contesto GPU perso, scarico il modello: ' + (e instanceof Error ? e.message : String(e)))
+        await disposeModel()
+        throw new Error(
+          'La GPU ha perso il contesto, di solito per mancanza di memoria. Il modello è stato scaricato e verrà ricaricato al prossimo messaggio. Se ricapita, passa al modello Base nelle Impostazioni: occupa meno della metà.'
+        )
+      }
       throw mapLocalContextError(e)
     } finally {
       clearInterval(cancelPoll)

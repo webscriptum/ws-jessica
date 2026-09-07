@@ -39,11 +39,15 @@ export const MODEL_CATALOG: LocalModelSpec[] = [
   {
     tier: 'standard',
     label: 'Standard — Granite 4.2 8B',
-    description: 'Più capace nelle operazioni complesse. Consigliato dai 16GB di RAM in su.',
+    description: 'Più capace nelle operazioni complesse. Serve un PC con 32GB di RAM: su 16GB, insieme a voce e riconoscimento, la GPU va in crisi.',
     uri: 'hf:ibm-granite/granite-4.2-8b-GGUF:Q4_K_M',
     approxSizeBytes: 4.98 * 1024 ** 3,
-    minRamGb: 16,
-    contextSize: 16384,
+    minRamGb: 32,
+    // 8192 e non 16384: la KV cache di un 8B a 16k pesa ~1GB in più, ed è
+    // bastato a far perdere il contesto Vulkan su una iGPU che condivide la
+    // RAM (2026-09-07). Le descrizioni tool compatte della 0.8.5 hanno
+    // liberato ~2800 token, quindi 8192 sono di nuovo sufficienti.
+    contextSize: 8192,
     maxTokens: 8192
   }
 ]

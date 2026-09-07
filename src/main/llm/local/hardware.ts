@@ -21,7 +21,11 @@ export function detectHardware(): HardwareInfo {
   // Il criterio ora è uno solo: il modello più il suo contesto devono stare in
   // memoria lasciando lavorare il resto del PC. Granite 4.2 8B occupa ~5GB di
   // pesi più ~1.5GB di contesto: sotto i 16GB totali si sta troppo stretti.
-  const recommendedTier: LocalModelTier = totalRamGb >= 16 ? 'standard' : 'base'
+  // Soglia alzata da 16 a 32GB dopo un caso reale: su un portatile da 16GB con
+  // iGPU (che pesca dalla stessa RAM) Granite 8B più riconoscitore vocale più
+  // voce neurale hanno fatto perdere il contesto Vulkan. Resta un consiglio:
+  // Standard si può comunque scegliere a mano dalle Impostazioni.
+  const recommendedTier: LocalModelTier = totalRamGb >= 32 ? 'standard' : 'base'
 
   const osLabel =
     platform === 'darwin' ? (appleSilicon ? 'Mac Apple Silicon' : 'Mac Intel')
